@@ -13,7 +13,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
   channel = vscode.window.createOutputChannel('Link Terminal Bot');
   watcher = new TerminalWatcher();
   context = new SessionContext();
-  chat = new ChatViewProvider(context, readChatSettings);
+  chat = new ChatViewProvider(context, readChatSettings, insertIntoTerminal);
 
   extensionContext.subscriptions.push(
     channel,
@@ -49,6 +49,14 @@ function logEntry(entry: TerminalCommandEntry): void {
   channel?.appendLine(
     `[${entry.id}] $ ${entry.command}   (exit ${entry.exitCode ?? '?'}, ${entry.durationMs ?? '?'} ms)`,
   );
+}
+
+/** Schreibt einen Befehl ins aktive Terminal, ohne ihn auszuführen (Enter drückt der Nutzer). */
+function insertIntoTerminal(command: string): void {
+  const terminal = vscode.window.activeTerminal ?? vscode.window.createTerminal('Terminal');
+  terminal.show();
+  terminal.sendText(command, false);
+  channel?.appendLine(`→ ins Terminal eingefügt: ${command}`);
 }
 
 function showContext(): void {

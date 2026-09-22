@@ -14,11 +14,12 @@ kopieren, wenn du den Chat fragst.
   konfigurierten Befehle (`az`, `azd`), sammelt Ausgabe (gekürzt auf `maxOutputChars`,
   Ende wird bevorzugt) und meldet den fertigen Befehl.
 - `src/sessionContext.ts` — Ringpuffer der letzten Befehle (der Kontext für das Modell).
-- `src/prompt.ts` — Systemprompt und der Kontextblock („Terminal-Verlauf"), der an die
-  Frage angehängt wird.
+- `src/prompt.ts` — Systemprompt (kurz: ein Satz + ein Befehl) und der Kontextblock
+  („Terminal-Verlauf"), der an die Frage gehängt wird.
 - `src/llmClient.ts` — minimaler Client für OpenAI-kompatible Chat-Endpunkte (ohne
   `vscode`-Import, damit einzeln testbar).
-- `src/chatView.ts` — die Chat-Ansicht in der sekundären Seitenleiste (rechts).
+- `src/chatView.ts` — die Chat-Ansicht in der Seitenleiste. Befehle in der Antwort
+  (`az ...`) werden als Zeile mit **Einfügen**-Knopf gerendert.
 - `src/extension.ts` — Verdrahtung, Output-Kanal, Befehle.
 
 ## Einrichten
@@ -66,6 +67,13 @@ im Terminal arbeiten und im Chat fragen.
 - `linkTerminalBot.chatContextCommands` — wie viele davon ans Modell gehen (5).
 - `linkTerminalBot.chatEndpoint` / `chatApiKey` / `chatModel` — siehe oben.
 
+## Bedienung
+
+Der Bot antwortet knapp: ein Satz, dann genau ein Befehl. Der Befehl erscheint als Zeile
+mit **Einfügen**-Knopf — ein Klick schreibt ihn ins aktive Terminal, **ausgeführt wird er
+nicht** (Enter drückst du). Der Kontext (die zuletzt mitgelesenen Befehle) geht bei jeder
+Frage automatisch mit.
+
 ## Grenzen
 
 - Ohne Shell-Integration (abgeschaltet oder nicht unterstützte Shell) kommen keine Events.
@@ -73,5 +81,5 @@ im Terminal arbeiten und im Chat fragen.
   das erste Wort.
 - Kein Streaming, keine Werkzeuge: eine Frage, eine Antwort. Der Chat sieht den
   Terminal-Puffer als Momentaufnahme beim Absenden, nicht live.
-- Die Extension führt selbst keine Befehle aus — sie liest nur mit und schickt die
-  gesammelte Ausgabe an den konfigurierten Endpunkt.
+- Die Extension führt selbst keine Befehle aus — sie liest mit, schickt die gesammelte
+  Ausgabe an den konfigurierten Endpunkt und schreibt auf Klick einen Befehl ins Terminal.
