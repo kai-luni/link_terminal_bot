@@ -1,0 +1,75 @@
+{
+  "name": "link-terminal-bot",
+  "displayName": "Link Terminal Bot",
+  "description": "Liest Azure-CLI-Befehle im VS-Code-Terminal mit (Shell-Integration-API) und gibt Hinweise zum Befehl, zur Ausgabe und zum Exit-Code.",
+  "version": "0.0.1",
+  "publisher": "kai-luni",
+  "private": true,
+  "engines": {
+    "vscode": "^1.93.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./out/extension.js",
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "contributes": {
+    "commands": [
+      {
+        "command": "linkTerminalBot.showContext",
+        "title": "Link Terminal Bot: Sitzungskontext anzeigen"
+      },
+      {
+        "command": "linkTerminalBot.adviseLast",
+        "title": "Link Terminal Bot: Hinweis zum letzten Befehl"
+      },
+      {
+        "command": "linkTerminalBot.clearContext",
+        "title": "Link Terminal Bot: Sitzungskontext leeren"
+      }
+    ],
+    "configuration": {
+      "title": "Link Terminal Bot",
+      "properties": {
+        "linkTerminalBot.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Terminal-Beobachtung ein- oder ausschalten."
+        },
+        "linkTerminalBot.watchedCommands": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": [
+            "az",
+            "azd"
+          ],
+          "description": "Erstes Wort eines Befehls, das beobachtet wird (z. B. \"az\", \"azd\")."
+        },
+        "linkTerminalBot.maxOutputChars": {
+          "type": "number",
+          "default": 4000,
+          "description": "Wie viele Zeichen Ausgabe pro Befehl behalten werden (Ende der Ausgabe wird bevorzugt)."
+        },
+        "linkTerminalBot.historySize": {
+          "type": "number",
+          "default": 20,
+          "description": "Wie viele Befehle im Sitzungskontext behalten werden."
+        }
+      }
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "@types/vscode": "^1.93.0",
+    "typescript": "^5.6.0"
+  }
+}
