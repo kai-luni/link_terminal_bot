@@ -41,12 +41,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private readonly settings: () => ChatSettings,
     private readonly insertCommand: (command: string) => void,
     private readonly log: (message: string) => void = () => {},
+    private readonly debugLog: (type: string, data: unknown) => void = () => {},
   ) {}
 
   /** Nach einem Einfügen aus dem Chat: der nächste Befehl ist die Folge unseres Vorschlags. */
   noteUserAction(): void {
     this.lastAutoAt = 0;
     this.log('Befehl aus dem Chat eingefügt — der nächste Hinweis kommt ohne Wartezeit.');
+    this.debugLog('AUTO_COOLDOWN_RESET', 'Einfügen aus dem Chat');
   }
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -70,12 +72,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     const failed = entry.exitCode === undefined || entry.exitCode !== 0;
     if (settings.autoAdvise === 'errors' && !failed) {
+      this.debugLog('AUTO_SKIP', { grund: 'Modus errors, Befehl war erfolgreich', entry });
       return;
     }
     if (this.autoInFlight) {
       // Läuft noch eine Anfrage: den Befehl nicht verlieren, sondern nachziehen.
       this.pendingEntry = entry;
       this.log(`[${entry.id}] Hinweis zurückgestellt — es läuft noch eine Anfrage.`);
+      this.debugLog('AUTO_DEFER', { entry });
       return;
     }
     const cooldownMs = Math.max(0, settings.autoAdviseSeconds) * 1000;
@@ -84,26 +88,36 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.log(
         `[${entry.id}] kein Hinweis: Mindestabstand ${settings.autoAdviseSeconds}s noch nicht um (${Math.round(elapsed / 1000)}s).`,
       );
+      this.debugLog('AUTO_SKIP', {
+        grund: 'Mindestabstand noch nicht um',
+        vergangenSekunden: Math.round(elapsed / 1000),
+        einstellungSekunden: settings.autoAdviseSeconds,
+        entry,
+      });
       return;
     }
 
     this.autoInFlight = true;
     this.lastAutoAt = Date.now();
+    const messages = [
+      { role: 'system' as const, content: AUTO_SYSTEM_PROMPT },
+      {
+        role: 'user' as const,
+        content: renderAutoContext(entry, this.context.all, settings.contextCommands),
+      },
+    ];
+    this.debugLog('AUTO_REQUEST', { model: settings.model, entry, messages });
 
     try {
       const answer = await chatCompletion({
         endpoint: settings.endpoint,
         apiKey: settings.apiKey,
         model: settings.model,
-        messages: [
-          { role: 'system', content: AUTO_SYSTEM_PROMPT },
-          {
-            role: 'user',
-            content: renderAutoContext(entry, this.context.all, settings.contextCommands),
-          },
-        ],
+        messages,
       });
-      if (isSilent(answer)) {
+      const silent = isSilent(answer);
+      this.debugLog('AUTO_ANSWER', { entryId: entry.id, silent, answer });
+      if (silent) {
         this.log(`[${entry.id}] $ ${entry.command} -> exit ${entry.exitCode ?? '?'}: kein Hinweis`);
       } else {
         this.history.push({ role: 'assistant', content: answer });
@@ -118,6 +132,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     } catch (err) {
       // Ein automatischer Hinweis darf den Ablauf nicht stören — nur ins Log.
       this.log(`[${entry.id}] automatischer Hinweis fehlgeschlagen: ${String(err)}`);
+      this.debugLog('AUTO_ERROR', { entryId: entry.id, fehler: String(err) });
       this.lastAutoAt = 0;
     } finally {
       this.autoInFlight = false;
@@ -170,22 +185,25 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const question = text.trim();
     const settings = this.settings();
     const previous = this.history;
+    const messages: ChatMessage[] = [
+      { role: 'system', content: SYSTEM_PROMPT },
+      ...previous,
+      {
+        role: 'user',
+        content: `${question}\n\n${renderContext(this.context.all, settings.contextCommands)}`,
+      },
+    ];
     this.post({ type: 'busy', busy: true });
+    this.debugLog('ASK', { model: settings.model, frage: question, messages });
 
     try {
       const answer = await chatCompletion({
         endpoint: settings.endpoint,
         apiKey: settings.apiKey,
         model: settings.model,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...previous,
-          {
-            role: 'user',
-            content: `${question}\n\n${renderContext(this.context.all, settings.contextCommands)}`,
-          },
-        ],
+        messages,
       });
+      this.debugLog('ANSWER', { frage: question, answer });
       this.history = [
         ...previous,
         { role: 'user', content: question },
@@ -193,7 +211,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ];
       this.post({ type: 'answer', text: answer });
     } catch (err) {
-      this.post({ type: 'error', text: err instanceof Error ? err.message : String(err) });
+      const message = err instanceof Error ? err.message : String(err);
+      this.debugLog('ERROR', { frage: question, fehler: message });
+      this.post({ type: 'error', text: message });
     } finally {
       this.post({ type: 'busy', busy: false });
     }

@@ -96,6 +96,20 @@ Steuerung:
 - Warum **kein** Hinweis kam, steht im Ausgabe-Kanal (Zeile pro Befehl: „kein Hinweis",
   „Mindestabstand noch nicht um", „zurückgestellt" oder die Fehlermeldung).
 
+## Log-Datei
+
+Alles landet zusätzlich in **`~/link-terminal-bot.log`** — gleiche Bauart wie blinks
+`~/blink-llm.log`: pro Eintrag ein Block mit Zeitstempel, Typ und Payload (JSON). Typen:
+
+- `COMMAND` — mitgelesener Befehl mit Ausgabe, Exit-Code, Dauer
+- `ASK` / `ANSWER` — deine Frage inklusive des kompletten Prompts und die Antwort
+- `AUTO_REQUEST` / `AUTO_ANSWER` / `AUTO_SKIP` / `AUTO_DEFER` / `AUTO_ERROR` — automatische
+  Hinweise samt Begründung, wenn geschwiegen wurde (z. B. Mindestabstand, Modus `errors`)
+- `INFO` — dieselben Zeilen wie im Output-Kanal
+
+Der API-Key wird nie geloggt. Ab 2 MB wird die Datei nach `~/link-terminal-bot.log.1`
+weggedreht (eine Generation, ältere wird überschrieben).
+
 ## Grenzen
 
 - Ohne Shell-Integration (abgeschaltet oder nicht unterstützte Shell) kommen keine Events.

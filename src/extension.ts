@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { ChatSettings, ChatViewProvider } from './chatView';
+import { DEFAULT_LOG_PATH, writeLog } from './fileLog';
 import { SessionContext } from './sessionContext';
 import { TerminalWatcher } from './terminalWatcher';
 import { TerminalCommandEntry } from './types';
@@ -13,7 +14,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
   channel = vscode.window.createOutputChannel('Link Terminal Bot');
   watcher = new TerminalWatcher();
   context = new SessionContext();
-  chat = new ChatViewProvider(context, readChatSettings, insertIntoTerminal, logLine);
+  chat = new ChatViewProvider(context, readChatSettings, insertIntoTerminal, logLine, debugLog);
 
   extensionContext.subscriptions.push(
     channel,
@@ -24,6 +25,14 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
     watcher.onCommand((entry) => {
       context?.add(entry, historySize());
       logEntry(entry);
+      debugLog('COMMAND', {
+        id: entry.id,
+        command: entry.command,
+        exitCode: entry.exitCode,
+        durationMs: entry.durationMs,
+        cwd: entry.cwd,
+        output: entry.output,
+      });
       chat?.notifyContext();
       void chat?.autoAdvise(entry);
     }),
@@ -37,6 +46,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
   channel.appendLine('Link Terminal Bot aktiv.');
   channel.appendLine('Chat: Seitenleiste rechts -> Link Terminal Bot (oder Befehl "Link Terminal Bot: Chat öffnen").');
   channel.appendLine('Beobachtet wird nur, wenn im Terminal Shell-Integration aktiv ist (Standard in VS Code).');
+  channel.appendLine(`Debug-Log: ${DEFAULT_LOG_PATH}`);
 }
 
 export function deactivate(): void {
@@ -54,6 +64,12 @@ function logEntry(entry: TerminalCommandEntry): void {
 
 function logLine(message: string): void {
   channel?.appendLine(message);
+  void writeLog('INFO', message);
+}
+
+/** Schreibt einen Block in die Debug-Log-Datei (~/link-terminal-bot.log). */
+function debugLog(type: string, data: unknown): void {
+  void writeLog(type, data);
 }
 
 /** Schreibt einen Befehl ins aktive Terminal, ohne ihn auszuführen (Enter drückt der Nutzer). */
