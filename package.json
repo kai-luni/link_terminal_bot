@@ -114,7 +114,7 @@
         },
         "linkTerminalBot.autoAdviseSeconds": {
           "type": "number",
-          "default": 15,
+          "default": 8,
           "description": "Mindestabstand zwischen zwei automatischen Hinweisen in Sekunden."
         }
       }

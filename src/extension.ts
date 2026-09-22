@@ -99,7 +99,7 @@ function readChatSettings(): ChatSettings {
     model: cfg.get<string>('chatModel', 'gpt-4o-mini'),
     contextCommands: cfg.get<number>('chatContextCommands', 5),
     autoAdvise: mode === 'off' || mode === 'always' ? mode : 'errors',
-    autoAdviseSeconds: cfg.get<number>('autoAdviseSeconds', 15),
+    autoAdviseSeconds: cfg.get<number>('autoAdviseSeconds', 8),
   };
 }
 

@@ -34,6 +34,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private history: ChatMessage[] = [];
   private lastAutoAt = 0;
   private autoInFlight = false;
+  private pendingEntry: TerminalCommandEntry | undefined;
 
   constructor(
     private readonly context: SessionContext,
@@ -41,6 +42,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     private readonly insertCommand: (command: string) => void,
     private readonly log: (message: string) => void = () => {},
   ) {}
+
+  /** Nach einem Einfügen aus dem Chat: der nächste Befehl ist die Folge unseres Vorschlags. */
+  noteUserAction(): void {
+    this.lastAutoAt = 0;
+    this.log('Befehl aus dem Chat eingefügt — der nächste Hinweis kommt ohne Wartezeit.');
+  }
 
   resolveWebviewView(view: vscode.WebviewView): void {
     this.view = view;
@@ -56,21 +63,32 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
    * Reagiert von sich aus auf einen beendeten Befehl — oder schweigt.
    * Nur wenn das Modell es für nötig hält, landet eine Nachricht im Chat.
    */
-  async autoAdvise(entry: TerminalCommandEntry): Promise<void> {
+  async autoAdvise(entry: TerminalCommandEntry, skipCooldown = false): Promise<void> {
     const settings = this.settings();
-    if (settings.autoAdvise === 'off' || this.autoInFlight) {
+    if (settings.autoAdvise === 'off') {
       return;
     }
     const failed = entry.exitCode === undefined || entry.exitCode !== 0;
     if (settings.autoAdvise === 'errors' && !failed) {
       return;
     }
-    const now = Date.now();
-    if (now - this.lastAutoAt < Math.max(0, settings.autoAdviseSeconds) * 1000) {
+    if (this.autoInFlight) {
+      // Läuft noch eine Anfrage: den Befehl nicht verlieren, sondern nachziehen.
+      this.pendingEntry = entry;
+      this.log(`[${entry.id}] Hinweis zurückgestellt — es läuft noch eine Anfrage.`);
       return;
     }
+    const cooldownMs = Math.max(0, settings.autoAdviseSeconds) * 1000;
+    const elapsed = Date.now() - this.lastAutoAt;
+    if (!skipCooldown && elapsed < cooldownMs) {
+      this.log(
+        `[${entry.id}] kein Hinweis: Mindestabstand ${settings.autoAdviseSeconds}s noch nicht um (${Math.round(elapsed / 1000)}s).`,
+      );
+      return;
+    }
+
     this.autoInFlight = true;
-    this.lastAutoAt = now;
+    this.lastAutoAt = Date.now();
 
     try {
       const answer = await chatCompletion({
@@ -87,22 +105,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       });
       if (isSilent(answer)) {
         this.log(`[${entry.id}] $ ${entry.command} -> exit ${entry.exitCode ?? '?'}: kein Hinweis`);
-        return;
+      } else {
+        this.history.push({ role: 'assistant', content: answer });
+        this.post({
+          type: 'answer',
+          text: answer,
+          auto: true,
+          label: `automatisch · $ ${entry.command} (exit ${entry.exitCode ?? '?'})`,
+        });
+        this.log(`[${entry.id}] automatischer Hinweis: ${answer.split('\n')[0]}`);
       }
-      this.history.push({ role: 'assistant', content: answer });
-      this.post({
-        type: 'answer',
-        text: answer,
-        auto: true,
-        label: `automatisch · $ ${entry.command} (exit ${entry.exitCode ?? '?'})`,
-      });
-      this.log(`[${entry.id}] automatischer Hinweis: ${answer.split('\n')[0]}`);
     } catch (err) {
       // Ein automatischer Hinweis darf den Ablauf nicht stören — nur ins Log.
       this.log(`[${entry.id}] automatischer Hinweis fehlgeschlagen: ${String(err)}`);
       this.lastAutoAt = 0;
     } finally {
       this.autoInFlight = false;
+    }
+
+    const deferred = this.pendingEntry;
+    this.pendingEntry = undefined;
+    if (deferred) {
+      await this.autoAdvise(deferred, true);
     }
   }
 
@@ -134,6 +158,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     if (type === 'insert') {
       if (command && command.trim().length > 0) {
         this.insertCommand(command.trim());
+        this.noteUserAction();
         this.post({ type: 'inserted', text: command.trim() });
       }
       return;
