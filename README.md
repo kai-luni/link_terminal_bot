@@ -88,8 +88,13 @@ im Chat mit `automatisch · $ <Befehl> (exit N)` gekennzeichnet.
 
 Steuerung:
 - `linkTerminalBot.autoAdvise`: `off` | `errors` | `always` (Standard `always`).
-- `linkTerminalBot.autoAdviseSeconds`: Mindestabstand zwischen zwei Hinweisen (Standard 15) —
-  verhindert, dass eine schnelle Befehlsfolge viele Modellaufrufe auslöst.
+- `linkTerminalBot.autoAdviseSeconds`: Mindestabstand zwischen zwei Hinweisen (Standard 8) —
+  verhindert, dass eine schnelle Befehlsfolge viele Modellaufrufe auslöst. Wird ein Befehl aus
+  dem Chat eingefügt, gilt der Abstand nicht: der nächste Befehl ist die Folge unseres
+  Vorschlags und bekommt sofort eine Antwort. Läuft noch eine Anfrage, wird der Befehl nicht
+  verworfen, sondern danach nachgezogen.
+- Warum **kein** Hinweis kam, steht im Ausgabe-Kanal (Zeile pro Befehl: „kein Hinweis",
+  „Mindestabstand noch nicht um", „zurückgestellt" oder die Fehlermeldung).
 
 ## Grenzen
 
