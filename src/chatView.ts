@@ -209,6 +209,13 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
     border: none; padding: 3px 8px; font-size: 0.9em; cursor: pointer; white-space: nowrap;
   }
   .ins:hover { background: var(--vscode-button-secondaryHoverBackground); }
+  .ins:disabled { opacity: 1; cursor: default; }
+  .cmd.done { border-left: 2px solid var(--vscode-charts-green, #3fb950); padding-left: 4px; }
+  .cmd.done code { opacity: 0.65; }
+  .ins.done {
+    background: transparent;
+    color: var(--vscode-charts-green, #3fb950);
+  }
   .plain { white-space: pre-wrap; word-break: break-word; }
   .plain code { background: var(--vscode-textCodeBlock-background); padding: 0 3px; }
   .typing { color: var(--vscode-descriptionForeground); font-style: italic; }
@@ -287,7 +294,15 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
     btn.className = 'ins';
     btn.textContent = 'Einfügen';
     btn.title = 'In das aktive Terminal einfügen';
-    btn.addEventListener('click', () => vscode.postMessage({ type: 'insert', command: line }));
+    btn.addEventListener('click', () => {
+      vscode.postMessage({ type: 'insert', command: line });
+      // Sofort sichtbar machen, dass dieser Befehl schon eingefügt wurde.
+      row.classList.add('done');
+      btn.classList.add('done');
+      btn.textContent = '✓ eingefügt';
+      btn.disabled = true;
+      btn.title = 'Bereits ins Terminal eingefügt';
+    });
     row.appendChild(code);
     row.appendChild(btn);
     return row;

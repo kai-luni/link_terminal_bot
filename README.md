@@ -75,7 +75,8 @@ wird zu **einer** einfügbaren Zeile mit **Einfügen**-Knopf — auch ein mehrze
 Fließtext klickbar. Eingefügt heißt: der Text landet am Prompt des aktiven Terminals,
 **ausgeführt wird er nicht** (Enter drückst du). Der Kontext (die zuletzt mitgelesenen
 Befehle) geht bei jeder Frage automatisch mit. Solange eine Antwort unterwegs ist, steht
-**schreibt …** im Chat.
+**schreibt …** im Chat; ein eingefügter Befehl wird in seiner Zeile mit **✓ eingefügt**
+markiert und lässt sich nicht versehentlich zweimal einfügen.
 
 ## Automatische Hinweise
 
