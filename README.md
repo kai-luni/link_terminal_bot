@@ -76,6 +76,19 @@ Fließtext klickbar. Eingefügt heißt: der Text landet am Prompt des aktiven Te
 **ausgeführt wird er nicht** (Enter drückst du). Der Kontext (die zuletzt mitgelesenen
 Befehle) geht bei jeder Frage automatisch mit.
 
+## Automatische Hinweise
+
+Der Bot schaut von selbst mit: endet ein mitgelesener Befehl, prüft er, ob es etwas zu sagen
+gibt — und schweigt, wenn nicht (dann steht nur eine Zeile im Output-Kanal). Reagiert wird
+z. B. auf Fehler oder auf Befehle, nach denen der nächste Schritt fast immer folgt
+(`az login` → Subscription setzen, `create` → Ergebnis prüfen). Automatische Hinweise sind
+im Chat mit `automatisch · $ <Befehl> (exit N)` gekennzeichnet.
+
+Steuerung:
+- `linkTerminalBot.autoAdvise`: `off` | `errors` | `always` (Standard `always`).
+- `linkTerminalBot.autoAdviseSeconds`: Mindestabstand zwischen zwei Hinweisen (Standard 15) —
+  verhindert, dass eine schnelle Befehlsfolge viele Modellaufrufe auslöst.
+
 ## Grenzen
 
 - Ohne Shell-Integration (abgeschaltet oder nicht unterstützte Shell) kommen keine Events.

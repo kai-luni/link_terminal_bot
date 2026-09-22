@@ -13,7 +13,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
   channel = vscode.window.createOutputChannel('Link Terminal Bot');
   watcher = new TerminalWatcher();
   context = new SessionContext();
-  chat = new ChatViewProvider(context, readChatSettings, insertIntoTerminal);
+  chat = new ChatViewProvider(context, readChatSettings, insertIntoTerminal, logLine);
 
   extensionContext.subscriptions.push(
     channel,
@@ -25,6 +25,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
       context?.add(entry, historySize());
       logEntry(entry);
       chat?.notifyContext();
+      void chat?.autoAdvise(entry);
     }),
     vscode.commands.registerCommand('linkTerminalBot.openChat', () =>
       vscode.commands.executeCommand(`${ChatViewProvider.viewId}.focus`),
@@ -49,6 +50,10 @@ function logEntry(entry: TerminalCommandEntry): void {
   channel?.appendLine(
     `[${entry.id}] $ ${entry.command}   (exit ${entry.exitCode ?? '?'}, ${entry.durationMs ?? '?'} ms)`,
   );
+}
+
+function logLine(message: string): void {
+  channel?.appendLine(message);
 }
 
 /** Schreibt einen Befehl ins aktive Terminal, ohne ihn auszuführen (Enter drückt der Nutzer). */
@@ -87,11 +92,14 @@ function clearContext(): void {
 
 function readChatSettings(): ChatSettings {
   const cfg = vscode.workspace.getConfiguration('linkTerminalBot');
+  const mode = cfg.get<string>('autoAdvise', 'always');
   return {
     endpoint: cfg.get<string>('chatEndpoint', ''),
     apiKey: cfg.get<string>('chatApiKey', ''),
     model: cfg.get<string>('chatModel', 'gpt-4o-mini'),
     contextCommands: cfg.get<number>('chatContextCommands', 5),
+    autoAdvise: mode === 'off' || mode === 'always' ? mode : 'errors',
+    autoAdviseSeconds: cfg.get<number>('autoAdviseSeconds', 15),
   };
 }
 

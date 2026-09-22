@@ -96,6 +96,26 @@
           "type": "string",
           "default": "gpt-4o-mini",
           "description": "Modellname, der im Request mitgeschickt wird."
+        },
+        "linkTerminalBot.autoAdvise": {
+          "type": "string",
+          "enum": [
+            "off",
+            "errors",
+            "always"
+          ],
+          "enumDescriptions": [
+            "Nie von selbst melden — nur auf Fragen antworten.",
+            "Nur reagieren, wenn ein Befehl mit Fehler endet (Exit-Code != 0).",
+            "Nach jedem mitgelesenen Befehl reagieren, wenn es etwas zu sagen gibt."
+          ],
+          "default": "always",
+          "description": "Wann der Bot von sich aus einen Hinweis in den Chat schreibt. Wenn es nichts zu sagen gibt, schweigt er."
+        },
+        "linkTerminalBot.autoAdviseSeconds": {
+          "type": "number",
+          "default": 15,
+          "description": "Mindestabstand zwischen zwei automatischen Hinweisen in Sekunden."
         }
       }
     }

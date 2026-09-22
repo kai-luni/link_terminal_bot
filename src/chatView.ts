@@ -1,14 +1,25 @@
 import * as crypto from 'crypto';
 import * as vscode from 'vscode';
 import { ChatMessage, chatCompletion } from './llmClient';
-import { SYSTEM_PROMPT, renderContext } from './prompt';
+import {
+  AUTO_SYSTEM_PROMPT,
+  SYSTEM_PROMPT,
+  isSilent,
+  renderAutoContext,
+  renderContext,
+} from './prompt';
 import { SessionContext } from './sessionContext';
+import { TerminalCommandEntry } from './types';
+
+export type AutoAdviseMode = 'off' | 'errors' | 'always';
 
 export interface ChatSettings {
   endpoint: string;
   apiKey: string;
   model: string;
   contextCommands: number;
+  autoAdvise: AutoAdviseMode;
+  autoAdviseSeconds: number;
 }
 
 /**
@@ -21,11 +32,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private view: vscode.WebviewView | undefined;
   private history: ChatMessage[] = [];
+  private lastAutoAt = 0;
+  private autoInFlight = false;
 
   constructor(
     private readonly context: SessionContext,
     private readonly settings: () => ChatSettings,
     private readonly insertCommand: (command: string) => void,
+    private readonly log: (message: string) => void = () => {},
   ) {}
 
   resolveWebviewView(view: vscode.WebviewView): void {
@@ -36,6 +50,60 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.view = undefined;
     });
     view.webview.onDidReceiveMessage((message: unknown) => void this.handleMessage(message));
+  }
+
+  /**
+   * Reagiert von sich aus auf einen beendeten Befehl — oder schweigt.
+   * Nur wenn das Modell es für nötig hält, landet eine Nachricht im Chat.
+   */
+  async autoAdvise(entry: TerminalCommandEntry): Promise<void> {
+    const settings = this.settings();
+    if (settings.autoAdvise === 'off' || this.autoInFlight) {
+      return;
+    }
+    const failed = entry.exitCode === undefined || entry.exitCode !== 0;
+    if (settings.autoAdvise === 'errors' && !failed) {
+      return;
+    }
+    const now = Date.now();
+    if (now - this.lastAutoAt < Math.max(0, settings.autoAdviseSeconds) * 1000) {
+      return;
+    }
+    this.autoInFlight = true;
+    this.lastAutoAt = now;
+
+    try {
+      const answer = await chatCompletion({
+        endpoint: settings.endpoint,
+        apiKey: settings.apiKey,
+        model: settings.model,
+        messages: [
+          { role: 'system', content: AUTO_SYSTEM_PROMPT },
+          {
+            role: 'user',
+            content: renderAutoContext(entry, this.context.all, settings.contextCommands),
+          },
+        ],
+      });
+      if (isSilent(answer)) {
+        this.log(`[${entry.id}] $ ${entry.command} -> exit ${entry.exitCode ?? '?'}: kein Hinweis`);
+        return;
+      }
+      this.history.push({ role: 'assistant', content: answer });
+      this.post({
+        type: 'answer',
+        text: answer,
+        auto: true,
+        label: `automatisch · $ ${entry.command} (exit ${entry.exitCode ?? '?'})`,
+      });
+      this.log(`[${entry.id}] automatischer Hinweis: ${answer.split('\n')[0]}`);
+    } catch (err) {
+      // Ein automatischer Hinweis darf den Ablauf nicht stören — nur ins Log.
+      this.log(`[${entry.id}] automatischer Hinweis fehlgeschlagen: ${String(err)}`);
+      this.lastAutoAt = 0;
+    } finally {
+      this.autoInFlight = false;
+    }
   }
 
   /** Meldet der Ansicht, wie viele Befehle gerade als Kontext bereitliegen. */
@@ -286,6 +354,7 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
   window.addEventListener('message', (event) => {
     const msg = event.data || {};
     if (msg.type === 'answer') {
+      if (msg.auto) { addPlain('meta', msg.label || 'automatischer Hinweis'); }
       addRich(msg.text);
     } else if (msg.type === 'error') {
       addPlain('err', 'Fehler: ' + msg.text);

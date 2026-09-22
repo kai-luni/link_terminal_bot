@@ -14,6 +14,37 @@ export const SYSTEM_PROMPT = [
   'Erfinde keine Ressourcennamen, IDs oder Subscription-Werte.',
 ].join('\n');
 
+/** Das Modell antwortet genau damit, wenn es nichts zu sagen gibt. */
+export const SILENT_TOKEN = 'NICHTS';
+
+/** Systemprompt für den automatischen Hinweis (ohne Frage des Nutzers). */
+export const AUTO_SYSTEM_PROMPT = [
+  'Du beobachtest mit, was im Azure-CLI-Terminal des Nutzers passiert.',
+  'Du bekommst den gerade beendeten Befehl mit Ausgabe und Exit-Code plus etwas Verlauf.',
+  'Wenn ein Fehler zu beheben ist oder ein sinnvoller nächster Schritt auf der Hand liegt: antworte mit EINEM kurzen Satz auf Deutsch und genau einem Befehl in einem Codeblock mit der Sprache "az".',
+  'Melde dich auch nach erfolgreichen Befehlen, wenn der nächste Schritt fast immer folgt — z. B. nach `az login` oder `az account set` (Subscription prüfen/setzen), nach einem `create`/`update`/`delete` (Ergebnis verifizieren) oder wenn die Ausgabe einen Namen/eine ID liefert, die der nächste Befehl braucht.',
+  `Wenn es nichts zu sagen gibt (Befehl war erfolgreich und der nächste Schritt ist offensichtlich oder unbekannt, Ausgabe ohne Problem), antworte exakt mit ${SILENT_TOKEN} und sonst nichts.`,
+  'Lieber schweigen als raten: keine Vermutungen über fehlende Werte, keine Wiederholung des gerade gelaufenen Befehls.',
+  'Keine Begrüßungen, keine Zusammenfassung der Ausgabe, keine Parameter-Erklärungen.',
+].join('\n');
+
+/** True, wenn die Antwort "nichts zu sagen" bedeutet. */
+export function isSilent(answer: string): boolean {
+  const normalized = answer.trim().replace(/[.!?:*\s]+$/g, '').toUpperCase();
+  return normalized.length === 0 || normalized === SILENT_TOKEN;
+}
+
+/** Kontextblock für den automatischen Hinweis: der letzte Befehl plus Verlauf. */
+export function renderAutoContext(
+  entry: TerminalCommandEntry,
+  history: readonly TerminalCommandEntry[],
+  limit: number,
+): string {
+  const head = `Gerade beendet:\n$ ${entry.command}   -> exit ${entry.exitCode ?? '?'}`;
+  const output = entry.output ? `\n${entry.output}` : '\n(keine Ausgabe)';
+  return `${head}${output}\n\n${renderContext(history, limit)}`;
+}
+
 /** Baut den Kontextblock, den das Modell als Teil der Frage bekommt. */
 export function renderContext(entries: readonly TerminalCommandEntry[], limit: number): string {
   const picked = entries.slice(-Math.max(1, limit));
