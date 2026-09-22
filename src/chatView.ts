@@ -211,6 +211,11 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
   .ins:hover { background: var(--vscode-button-secondaryHoverBackground); }
   .plain { white-space: pre-wrap; word-break: break-word; }
   .plain code { background: var(--vscode-textCodeBlock-background); padding: 0 3px; }
+  .typing { color: var(--vscode-descriptionForeground); font-style: italic; }
+  .dots span { animation: blink 1.2s infinite; }
+  .dots span:nth-child(2) { animation-delay: 0.2s; }
+  .dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes blink { 0%, 20% { opacity: 0.15; } 50% { opacity: 1; } 100% { opacity: 0.15; } }
   #row { display: flex; gap: 4px; padding: 6px; border-top: 1px solid var(--vscode-panel-border); }
   textarea {
     flex: 1; height: 54px; resize: vertical; box-sizing: border-box;
@@ -302,6 +307,23 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
     return el;
   }
 
+  // "schreibt …" solange eine Antwort unterwegs ist.
+  function showTyping() {
+    if (document.getElementById('typing')) { return; }
+    const el = append(true);
+    el.id = 'typing';
+    el.className = 'msg bot typing';
+    el.textContent = 'schreibt';
+    const dots = document.createElement('span');
+    dots.className = 'dots';
+    dots.innerHTML = '<span>.</span><span>.</span><span>.</span>';
+    el.appendChild(dots);
+  }
+  function hideTyping() {
+    const el = document.getElementById('typing');
+    if (el) { el.remove(); }
+  }
+
   // Antworten des Bots: Codeblöcke werden zu einem einfügbaren Befehl,
   // az-Zeilen im Fließtext ebenfalls.
   function addRich(text) {
@@ -354,12 +376,15 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
   window.addEventListener('message', (event) => {
     const msg = event.data || {};
     if (msg.type === 'answer') {
+      hideTyping();
       if (msg.auto) { addPlain('meta', msg.label || 'automatischer Hinweis'); }
       addRich(msg.text);
     } else if (msg.type === 'error') {
+      hideTyping();
       addPlain('err', 'Fehler: ' + msg.text);
     } else if (msg.type === 'busy') {
       setBusy(!!msg.busy);
+      if (msg.busy) { showTyping(); } else { hideTyping(); }
     } else if (msg.type === 'context') {
       ctx.textContent = msg.count + ' Befehle im Kontext';
     } else if (msg.type === 'inserted') {

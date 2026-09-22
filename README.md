@@ -74,7 +74,8 @@ wird zu **einer** einfügbaren Zeile mit **Einfügen**-Knopf — auch ein mehrze
 (PowerShell o. Ä.) wird als Ganzes eingefügt. Zusätzlich werden `az`/`azd`-Zeilen im
 Fließtext klickbar. Eingefügt heißt: der Text landet am Prompt des aktiven Terminals,
 **ausgeführt wird er nicht** (Enter drückst du). Der Kontext (die zuletzt mitgelesenen
-Befehle) geht bei jeder Frage automatisch mit.
+Befehle) geht bei jeder Frage automatisch mit. Solange eine Antwort unterwegs ist, steht
+**schreibt …** im Chat.
 
 ## Automatische Hinweise
 
