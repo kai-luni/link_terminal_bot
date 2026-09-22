@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Advisor, RuleBasedAdvisor } from './advisor';
+import { ChatSettings, ChatViewProvider } from './chatView';
 import { SessionContext } from './sessionContext';
 import { TerminalWatcher } from './terminalWatcher';
 import { TerminalCommandEntry } from './types';
@@ -7,27 +7,34 @@ import { TerminalCommandEntry } from './types';
 let channel: vscode.OutputChannel | undefined;
 let watcher: TerminalWatcher | undefined;
 let context: SessionContext | undefined;
-let advisor: Advisor | undefined;
+let chat: ChatViewProvider | undefined;
 
 export function activate(extensionContext: vscode.ExtensionContext): void {
   channel = vscode.window.createOutputChannel('Link Terminal Bot');
   watcher = new TerminalWatcher();
   context = new SessionContext();
-  advisor = new RuleBasedAdvisor();
-
-  // TODO(Berater): Hier hängt später der LLM-Berater drin (Azure MCP Server / Modell-Endpoint).
-  // Er implementiert dieselbe Schnittstelle `Advisor` und bekommt `entry` + `context.all`.
+  chat = new ChatViewProvider(context, readChatSettings);
 
   extensionContext.subscriptions.push(
     channel,
     watcher,
-    watcher.onCommand((entry) => void handleCommand(entry)),
+    vscode.window.registerWebviewViewProvider(ChatViewProvider.viewId, chat, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+    watcher.onCommand((entry) => {
+      context?.add(entry, historySize());
+      logEntry(entry);
+      chat?.notifyContext();
+    }),
+    vscode.commands.registerCommand('linkTerminalBot.openChat', () =>
+      vscode.commands.executeCommand(`${ChatViewProvider.viewId}.focus`),
+    ),
     vscode.commands.registerCommand('linkTerminalBot.showContext', showContext),
-    vscode.commands.registerCommand('linkTerminalBot.adviseLast', adviseLast),
     vscode.commands.registerCommand('linkTerminalBot.clearContext', clearContext),
   );
 
-  channel.appendLine('Link Terminal Bot aktiv — beobachtet: az / azd (Einstellung linkTerminalBot.watchedCommands).');
+  channel.appendLine('Link Terminal Bot aktiv.');
+  channel.appendLine('Chat: Seitenleiste rechts -> Link Terminal Bot (oder Befehl "Link Terminal Bot: Chat öffnen").');
   channel.appendLine('Beobachtet wird nur, wenn im Terminal Shell-Integration aktiv ist (Standard in VS Code).');
 }
 
@@ -35,25 +42,13 @@ export function deactivate(): void {
   channel = undefined;
   watcher = undefined;
   context = undefined;
-  advisor = undefined;
+  chat = undefined;
 }
 
-async function handleCommand(entry: TerminalCommandEntry): Promise<void> {
-  if (!context || !advisor || !channel) {
-    return;
-  }
-  context.add(entry, historySize());
-  channel.appendLine(
+function logEntry(entry: TerminalCommandEntry): void {
+  channel?.appendLine(
     `[${entry.id}] $ ${entry.command}   (exit ${entry.exitCode ?? '?'}, ${entry.durationMs ?? '?'} ms)`,
   );
-
-  const advice = await advisor.advise(entry, context.all);
-  if (advice) {
-    channel.appendLine(`   → ${advice.summary}`);
-    if (advice.detail) {
-      channel.appendLine(`     ${advice.detail}`);
-    }
-  }
 }
 
 function showContext(): void {
@@ -76,29 +71,20 @@ function showContext(): void {
   channel.show(true);
 }
 
-async function adviseLast(): Promise<void> {
-  if (!context || !advisor || !channel) {
-    return;
-  }
-  const last = context.last;
-  if (!last) {
-    channel.appendLine('Noch kein az-Befehl beobachtet.');
-    channel.show(true);
-    return;
-  }
-  const advice = await advisor.advise(last, context.all);
-  channel.appendLine('');
-  channel.appendLine(`Hinweis zu [${last.id}] $ ${last.command}`);
-  channel.appendLine(advice ? `   → ${advice.summary}` : '   (kein Hinweis)');
-  if (advice?.detail) {
-    channel.appendLine(`     ${advice.detail}`);
-  }
-  channel.show(true);
-}
-
 function clearContext(): void {
   context?.clear();
+  chat?.notifyContext();
   channel?.appendLine('Sitzungskontext geleert.');
+}
+
+function readChatSettings(): ChatSettings {
+  const cfg = vscode.workspace.getConfiguration('linkTerminalBot');
+  return {
+    endpoint: cfg.get<string>('chatEndpoint', ''),
+    apiKey: cfg.get<string>('chatApiKey', ''),
+    model: cfg.get<string>('chatModel', 'gpt-4o-mini'),
+    contextCommands: cfg.get<number>('chatContextCommands', 5),
+  };
 }
 
 function historySize(): number {

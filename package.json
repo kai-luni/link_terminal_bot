@@ -1,8 +1,8 @@
 {
   "name": "link-terminal-bot",
   "displayName": "Link Terminal Bot",
-  "description": "Liest Azure-CLI-Befehle im VS-Code-Terminal mit (Shell-Integration-API) und gibt Hinweise zum Befehl, zur Ausgabe und zum Exit-Code.",
-  "version": "0.0.1",
+  "description": "Liest Azure-CLI-Befehle im VS-Code-Terminal mit und beantwortet Fragen dazu in einer Chat-Ansicht (Endpunkt + Key in den Einstellungen).",
+  "version": "0.1.0",
   "publisher": "kai-luni",
   "private": true,
   "engines": {
@@ -16,14 +16,32 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "viewsContainers": {
+      "secondarySidebar": [
+        {
+          "id": "linkTerminalBot",
+          "title": "Link Terminal Bot",
+          "icon": "resources/chat.svg"
+        }
+      ]
+    },
+    "views": {
+      "linkTerminalBot": [
+        {
+          "type": "webview",
+          "id": "linkTerminalBot.chat",
+          "name": "Chat"
+        }
+      ]
+    },
     "commands": [
+      {
+        "command": "linkTerminalBot.openChat",
+        "title": "Link Terminal Bot: Chat öffnen"
+      },
       {
         "command": "linkTerminalBot.showContext",
         "title": "Link Terminal Bot: Sitzungskontext anzeigen"
-      },
-      {
-        "command": "linkTerminalBot.adviseLast",
-        "title": "Link Terminal Bot: Hinweis zum letzten Befehl"
       },
       {
         "command": "linkTerminalBot.clearContext",
@@ -58,6 +76,26 @@
           "type": "number",
           "default": 20,
           "description": "Wie viele Befehle im Sitzungskontext behalten werden."
+        },
+        "linkTerminalBot.chatContextCommands": {
+          "type": "number",
+          "default": 5,
+          "description": "Wie viele der letzten Befehle als Kontext an das Modell geschickt werden."
+        },
+        "linkTerminalBot.chatEndpoint": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "Basis-URL des OpenAI-kompatiblen Endpunkts, z. B. `https://api.openai.com/v1`. Auch eine vollständige URL mit `/chat/completions` wird akzeptiert."
+        },
+        "linkTerminalBot.chatApiKey": {
+          "type": "string",
+          "default": "",
+          "markdownDescription": "API-Key für den Endpunkt. Achtung: steht im Klartext in der `settings.json`."
+        },
+        "linkTerminalBot.chatModel": {
+          "type": "string",
+          "default": "gpt-4o-mini",
+          "description": "Modellname, der im Request mitgeschickt wird."
         }
       }
     }

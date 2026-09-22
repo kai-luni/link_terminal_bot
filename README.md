@@ -1,25 +1,44 @@
 # link_terminal_bot
 
-VS-Code-Extension (Kern): beobachtet Azure-CLI-Befehle im Terminal und gibt Hinweise
-zu Befehl, Ausgabe und Exit-Code.
+VS-Code-Extension: liest Azure-CLI-Befehle im Terminal mit und beantwortet Fragen dazu
+in einer Chat-Ansicht auf der rechten Seite.
 
 Grundlage ist die **Terminal Shell Integration API** (stabil seit VS Code 1.93): VS Code
 meldet jeder Extension, welcher Befehl im Terminal lief, was er ausgegeben hat und mit
-welchem Exit-Code er endete. Genau das liest diese Extension mit.
+welchem Exit-Code er endete. Genau das liest diese Extension mit — du musst also nichts
+kopieren, wenn du den Chat fragst.
 
 ## Aufbau
 
 - `src/terminalWatcher.ts` — hängt sich an die Shell-Integration-Events, filtert die
   konfigurierten Befehle (`az`, `azd`), sammelt Ausgabe (gekürzt auf `maxOutputChars`,
   Ende wird bevorzugt) und meldet den fertigen Befehl.
-- `src/sessionContext.ts` — Ringpuffer der letzten Befehle (der Kontext für den Berater).
-- `src/advisor.ts` — `Advisor`-Schnittstelle plus regelbasierter Berater, der die
-  häufigen az-Fehlerbilder erkennt (abgelaufener Login, RBAC, unbekannte Resource Group,
-  falsche Subscription, nicht registrierter Provider, Syntaxfehler).
+- `src/sessionContext.ts` — Ringpuffer der letzten Befehle (der Kontext für das Modell).
+- `src/prompt.ts` — Systemprompt und der Kontextblock („Terminal-Verlauf"), der an die
+  Frage angehängt wird.
+- `src/llmClient.ts` — minimaler Client für OpenAI-kompatible Chat-Endpunkte (ohne
+  `vscode`-Import, damit einzeln testbar).
+- `src/chatView.ts` — die Chat-Ansicht in der sekundären Seitenleiste (rechts).
 - `src/extension.ts` — Verdrahtung, Output-Kanal, Befehle.
 
-Der Berater ist die Stelle, an der später das Modell andockt: ein LLM-Berater
-implementiert einfach `Advisor.advise(entry, history)` und bekommt denselben Kontext.
+## Einrichten
+
+In den **User Settings** (`settings.json`):
+
+```json
+{
+  "linkTerminalBot.chatEndpoint": "https://api.openai.com/v1",
+  "linkTerminalBot.chatApiKey": "<dein key>",
+  "linkTerminalBot.chatModel": "gpt-4o-mini"
+}
+```
+
+- `chatEndpoint` ist die Basis-URL; `/chat/completions` wird angehängt. Eine vollständige
+  URL (z. B. Azure OpenAI mit `?api-version=...`) wird unverändert benutzt.
+- Der Key wird als `Authorization: Bearer` **und** als `api-key`-Header geschickt, damit
+  auch Azure-OpenAI-Endpunkte funktionieren.
+- Der Key steht im Klartext in der `settings.json` — für den Dauerbetrieb wäre
+  SecretStorage der bessere Ort.
 
 ## Starten
 
@@ -28,15 +47,15 @@ npm install
 npm run compile
 ```
 
-Dann in VS Code `F5` („Extension starten") — es öffnet sich ein zweites Fenster mit der
-Extension. Dort im Terminal z. B. `az login` oder `az group list` laufen lassen und den
-Kanal **Ausgabe → Link Terminal Bot** beobachten.
+Dann `F5` („Extension starten"), im neuen Fenster rechts die Seitenleiste
+**Link Terminal Bot** öffnen (oder `Strg+Shift+P` → *Link Terminal Bot: Chat öffnen*),
+im Terminal arbeiten und im Chat fragen.
 
-## Befehle (Befehlspalette)
+## Befehle
 
-- `Link Terminal Bot: Sitzungskontext anzeigen` — alle beobachteten Befehle mit Ausgabe.
-- `Link Terminal Bot: Hinweis zum letzten Befehl` — Hinweis erneut berechnen.
-- `Link Terminal Bot: Sitzungskontext leeren`.
+- `Link Terminal Bot: Chat öffnen`
+- `Link Terminal Bot: Sitzungskontext anzeigen` (alle mitgelesenen Befehle im Output-Kanal)
+- `Link Terminal Bot: Sitzungskontext leeren`
 
 ## Einstellungen
 
@@ -44,12 +63,15 @@ Kanal **Ausgabe → Link Terminal Bot** beobachten.
 - `linkTerminalBot.watchedCommands` — erstes Wort des Befehls (Standard: `az`, `azd`).
 - `linkTerminalBot.maxOutputChars` — wie viel Ausgabe pro Befehl behalten wird (4000).
 - `linkTerminalBot.historySize` — wie viele Befehle im Kontext bleiben (20).
+- `linkTerminalBot.chatContextCommands` — wie viele davon ans Modell gehen (5).
+- `linkTerminalBot.chatEndpoint` / `chatApiKey` / `chatModel` — siehe oben.
 
-## Grenzen des Kerns
+## Grenzen
 
-- Ohne Shell-Integration (abgeschaltet oder nicht unterstützte Shell) kommen keine Events —
-  die Extension tut dann nichts.
-- Befehle, die in Pipes/Subshells stecken (z. B. `echo x | az ...`), werden nicht erkannt;
-  geprüft wird das erste Wort.
-- Noch kein Modellaufruf: die Hinweise kommen aus festen Regeln.
-- Keine Ausführung von Befehlen durch die Extension — sie liest nur mit.
+- Ohne Shell-Integration (abgeschaltet oder nicht unterstützte Shell) kommen keine Events.
+- Befehle in Pipes/Subshells (z. B. `echo x | az ...`) werden nicht erkannt; geprüft wird
+  das erste Wort.
+- Kein Streaming, keine Werkzeuge: eine Frage, eine Antwort. Der Chat sieht den
+  Terminal-Puffer als Momentaufnahme beim Absenden, nicht live.
+- Die Extension führt selbst keine Befehle aus — sie liest nur mit und schickt die
+  gesammelte Ausgabe an den konfigurierten Endpunkt.
