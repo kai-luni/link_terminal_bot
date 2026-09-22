@@ -234,27 +234,30 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
     return el;
   }
 
-  // Antworten des Bots: Codeblöcke und az-Zeilen werden klickbar.
+  // Antworten des Bots: Codeblöcke werden zu einem einfügbaren Befehl,
+  // az-Zeilen im Fließtext ebenfalls.
   function addRich(text) {
     const wrap = append(false);
     wrap.className = 'msg bot';
     const parts = String(text).split(FENCE);
     parts.forEach((part, index) => {
-      const isCode = index % 2 === 1;
-      const lines = part.replace(/^\\n+/, '').split('\\n');
-      if (isCode && lines.length > 0 && /^[a-zA-Z0-9+#-]{0,12}$/.test(lines[0].trim())) {
-        lines.shift();
+      if (index % 2 === 1) {
+        // Codeblock: ein Block = ein Befehl, auch mehrzeilig (z. B. PowerShell).
+        const lines = part.replace(/^\\n+/, '').replace(/\\n+$/, '').split('\\n');
+        if (lines.length > 0 && /^[a-zA-Z0-9+#-]{0,12}$/.test(lines[0].trim())) {
+          lines.shift();
+        }
+        const body = lines.join('\\n').replace(/^\\n+|\\n+$/g, '');
+        if (body.trim()) {
+          wrap.appendChild(cmdRow(body.trim()));
+        }
+        return;
       }
-      for (const raw of lines) {
+      for (const raw of part.split('\\n')) {
         const line = raw.trim();
         if (!line) { continue; }
         if (isCommand(line)) {
           wrap.appendChild(cmdRow(line));
-        } else if (isCode) {
-          const el = document.createElement('div');
-          el.className = 'plain';
-          el.textContent = line;
-          wrap.appendChild(el);
         } else {
           const el = document.createElement('div');
           el.className = 'plain';

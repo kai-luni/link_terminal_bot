@@ -69,10 +69,12 @@ im Terminal arbeiten und im Chat fragen.
 
 ## Bedienung
 
-Der Bot antwortet knapp: ein Satz, dann genau ein Befehl. Der Befehl erscheint als Zeile
-mit **Einfügen**-Knopf — ein Klick schreibt ihn ins aktive Terminal, **ausgeführt wird er
-nicht** (Enter drückst du). Der Kontext (die zuletzt mitgelesenen Befehle) geht bei jeder
-Frage automatisch mit.
+Der Bot antwortet knapp: ein Satz, dann genau ein Befehl. Jeder Codeblock in der Antwort
+wird zu **einer** einfügbaren Zeile mit **Einfügen**-Knopf — auch ein mehrzeiliger Block
+(PowerShell o. Ä.) wird als Ganzes eingefügt. Zusätzlich werden `az`/`azd`-Zeilen im
+Fließtext klickbar. Eingefügt heißt: der Text landet am Prompt des aktiven Terminals,
+**ausgeführt wird er nicht** (Enter drückst du). Der Kontext (die zuletzt mitgelesenen
+Befehle) geht bei jeder Frage automatisch mit.
 
 ## Grenzen
 
