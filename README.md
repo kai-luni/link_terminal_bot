@@ -105,6 +105,19 @@ Alles landet zusätzlich in **`~/link-terminal-bot.log`** — gleiche Bauart wie
 - `ASK` / `ANSWER` — deine Frage inklusive des kompletten Prompts und die Antwort
 - `AUTO_REQUEST` / `AUTO_ANSWER` / `AUTO_SKIP` / `AUTO_DEFER` / `AUTO_ERROR` — automatische
   Hinweise samt Begründung, wenn geschwiegen wurde (z. B. Mindestabstand, Modus `errors`)
+- `SESSION` / `SESSION_END` — beim Start bzw. Ende: Extension-Version, VS-Code-Version,
+  Plattform, Node, ob Shell-Integration schon gemeldet wurde, **alle wirksamen Einstellungen**
+  (Endpoint, Modell, `autoAdvise`, `watchedCommands`, Limits) und ob ein API-Key gesetzt ist
+  (der Key selbst nie)
+- `CONFIG_CHANGE` — die Einstellungen wurden geändert, mit dem neuen Stand
+- `VIEW_OPENED` / `VIEW_CLOSED` — die Chat-Ansicht wurde geöffnet/geschlossen
+- `SHELL_INTEGRATION` — VS Code hat Shell-Integration für ein Terminal gemeldet
+- `WATCH_SKIP` — der Befehl wurde **nicht** beobachtet, mit Grund (deaktiviert oder erstes
+  Wort nicht in `watchedCommands`); pro erstem Wort nur einmal, damit das Log lesbar bleibt
+- `WATCH_ERROR` — die Ausgabe eines Befehls konnte nicht vollständig gelesen werden
+- `WEBVIEW_ERROR` — Fehler in der Chat-Ansicht (dort sieht der Extension-Host sonst nichts)
+- `UNCAUGHT_EXCEPTION` / `UNHANDLED_REJECTION` — Abbrüche in der Extension, mit Stack
+- `ERROR` — Modell-/HTTP-Fehler bei deinen Fragen
 - `INFO` — dieselben Zeilen wie im Output-Kanal
 
 Der API-Key wird nie geloggt. Ab 2 MB wird die Datei nach `~/link-terminal-bot.log.1`

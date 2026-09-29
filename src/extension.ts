@@ -12,7 +12,7 @@ let chat: ChatViewProvider | undefined;
 
 export function activate(extensionContext: vscode.ExtensionContext): void {
   channel = vscode.window.createOutputChannel('Link Terminal Bot');
-  watcher = new TerminalWatcher();
+  watcher = new TerminalWatcher(debugLog);
   context = new SessionContext();
   chat = new ChatViewProvider(context, readChatSettings, insertIntoTerminal, logLine, debugLog);
 
@@ -36,6 +36,19 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
       chat?.notifyContext();
       void chat?.autoAdvise(entry);
     }),
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (e.affectsConfiguration('linkTerminalBot')) {
+        debugLog('CONFIG_CHANGE', describeSettings(readChatSettings()));
+        logLine('Einstellungen geändert.');
+      }
+    }),
+    vscode.window.onDidChangeWindowState((state) => {
+      debugLog('WINDOW_STATE', { focused: state.focused, activeTerminal: vscode.window.activeTerminal?.name });
+    }),
+    vscode.window.onDidChangeActiveTerminal((terminal) => {
+      debugLog('ACTIVE_TERMINAL', { name: terminal?.name ?? null });
+    }),
+    { dispose: () => loggingGuard?.dispose() },
     vscode.commands.registerCommand('linkTerminalBot.openChat', () =>
       vscode.commands.executeCommand(`${ChatViewProvider.viewId}.focus`),
     ),
@@ -43,6 +56,8 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('linkTerminalBot.clearContext', clearContext),
   );
 
+  installErrorHandlers();
+  debugLog('SESSION', sessionInfo(readChatSettings()));
   channel.appendLine('Link Terminal Bot aktiv.');
   channel.appendLine('Chat: Seitenleiste rechts -> Link Terminal Bot (oder Befehl "Link Terminal Bot: Chat öffnen").');
   channel.appendLine('Beobachtet wird nur, wenn im Terminal Shell-Integration aktiv ist (Standard in VS Code).');
@@ -50,10 +65,66 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void {
+  debugLog('SESSION_END', 'Extension wird deaktiviert.');
+  loggingGuard?.dispose();
   channel = undefined;
   watcher = undefined;
   context = undefined;
   chat = undefined;
+}
+
+/** Fängt Fehler ab, die sonst nur in der Debug-Konsole landen würden. */
+let loggingGuard: { dispose: () => void } | undefined;
+
+function installErrorHandlers(): void {
+  const onUncaught = (err: Error): void => {
+    debugLog('UNCAUGHT_EXCEPTION', { fehler: String(err), stack: err.stack });
+    channel?.appendLine(`FEHLER (uncaught): ${String(err)}`);
+  };
+  const onRejection = (reason: unknown): void => {
+    debugLog('UNHANDLED_REJECTION', { grund: String(reason) });
+    channel?.appendLine(`FEHLER (unhandled rejection): ${String(reason)}`);
+  };
+  process.on('uncaughtException', onUncaught);
+  process.on('unhandledRejection', onRejection);
+  loggingGuard = {
+    dispose: () => {
+      process.off('uncaughtException', onUncaught);
+      process.off('unhandledRejection', onRejection);
+    },
+  };
+}
+
+/** Was beim Start gilt — ohne Key, aber mit der Info, ob einer gesetzt ist. */
+function describeSettings(settings: ChatSettings, session?: SessionContext): Record<string, unknown> {
+  const cfg = vscode.workspace.getConfiguration('linkTerminalBot');
+  return {
+    endpoint: settings.endpoint || '(leer)',
+    apiKeyGesetzt: settings.apiKey.trim().length > 0,
+    modell: settings.model,
+    autoAdvise: settings.autoAdvise,
+    autoAdviseSekunden: settings.autoAdviseSeconds,
+    chatContextCommands: settings.contextCommands,
+    watchedCommands: cfg.get<string[]>('watchedCommands', ['az', 'azd']),
+    maxOutputChars: cfg.get<number>('maxOutputChars', 4000),
+    historySize: cfg.get<number>('historySize', 20),
+    aktiv: cfg.get<boolean>('enabled', true),
+    befehleImKontext: session?.all.length ?? 0,
+  };
+}
+
+/** Umgebung plus wirksame Einstellungen — der Block, der beim Debuggen zuerst fehlt. */
+function sessionInfo(settings: ChatSettings): Record<string, unknown> {
+  return {
+    extensionVersion: vscode.extensions.getExtension('kai-luni.link-terminal-bot')?.packageJSON?.version ?? '?',
+    vscode: vscode.version,
+    platform: `${process.platform} ${process.arch}`,
+    node: process.version,
+    shellIntegrationAktiv: watcher?.isActive ?? false,
+    terminal: vscode.window.activeTerminal?.name ?? null,
+    logPfad: DEFAULT_LOG_PATH,
+    ...describeSettings(settings, context),
+  };
 }
 
 function logEntry(entry: TerminalCommandEntry): void {

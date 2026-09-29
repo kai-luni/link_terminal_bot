@@ -26,11 +26,17 @@ export class TerminalWatcher implements vscode.Disposable {
   private readonly pending = new Map<vscode.TerminalShellExecution, PendingExecution>();
   private nextId = 1;
   private seenShellIntegration = false;
+  /** Erste Wörter, die schon als "nicht beobachtet" geloggt wurden (gegen Log-Rauschen). */
+  private readonly reportedSkips = new Set<string>();
 
-  constructor() {
+  constructor(private readonly log: (type: string, data: unknown) => void = () => {}) {
     this.disposables.push(
-      vscode.window.onDidChangeTerminalShellIntegration(() => {
+      vscode.window.onDidChangeTerminalShellIntegration((e) => {
         this.seenShellIntegration = true;
+        this.log('SHELL_INTEGRATION', {
+          terminal: e.terminal.name,
+          cwd: e.shellIntegration.cwd?.fsPath,
+        });
       }),
       vscode.window.onDidStartTerminalShellExecution((e) => this.handleStart(e)),
       vscode.window.onDidEndTerminalShellExecution((e) => void this.handleEnd(e)),
@@ -40,6 +46,16 @@ export class TerminalWatcher implements vscode.Disposable {
   /** True, sobald VS Code für mindestens ein Terminal Shell-Integration gemeldet hat. */
   get isActive(): boolean {
     return this.seenShellIntegration;
+  }
+
+  /** Warum ein Befehl nicht beobachtet wurde — pro erstem Wort nur einmal ins Log. */
+  private reportSkip(grund: string, command: string): void {
+    const first = command.split(/\s+/)[0] ?? '';
+    if (first.length === 0 || this.reportedSkips.has(first)) {
+      return;
+    }
+    this.reportedSkips.add(first);
+    this.log('WATCH_SKIP', { grund, erstesWort: first, beispiel: command });
   }
 
   private settings(): { enabled: boolean; watched: string[]; maxOutputChars: number } {
@@ -53,11 +69,13 @@ export class TerminalWatcher implements vscode.Disposable {
 
   private handleStart(e: vscode.TerminalShellExecutionStartEvent): void {
     const { enabled, watched, maxOutputChars } = this.settings();
+    const command = e.execution.commandLine.value.trim();
     if (!enabled) {
+      this.reportSkip('deaktiviert (linkTerminalBot.enabled = false)', command);
       return;
     }
-    const command = e.execution.commandLine.value.trim();
     if (!isWatched(command, watched)) {
+      this.reportSkip(`erstes Wort nicht in watchedCommands (${watched.join(', ')})`, command);
       return;
     }
 
@@ -99,6 +117,7 @@ export class TerminalWatcher implements vscode.Disposable {
     } catch (err) {
       // Terminal geschlossen oder Lauf abgebrochen: kein harter Fehler, Ausgabe bis dahin reicht.
       pending.entry.output = `[Ausgabe unvollständig: ${String(err)}]`;
+      this.log('WATCH_ERROR', { id: pending.entry.id, command: pending.entry.command, fehler: String(err) });
     }
   }
 

@@ -57,8 +57,10 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     view.webview.html = renderHtml(view.webview, this.settings());
     view.onDidDispose(() => {
       this.view = undefined;
+      this.debugLog('VIEW_CLOSED', 'Chat-Ansicht geschlossen.');
     });
     view.webview.onDidReceiveMessage((message: unknown) => void this.handleMessage(message));
+    this.debugLog('VIEW_OPENED', { modell: this.settings().model });
   }
 
   /**
@@ -155,12 +157,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   }
 
   private async handleMessage(message: unknown): Promise<void> {
-    const { type, text, command } = (message ?? {}) as {
+    const { type, text, command, stack } = (message ?? {}) as {
       type?: string;
       text?: string;
       command?: string;
+      stack?: string;
     };
 
+    if (type === 'webviewError') {
+      this.debugLog('WEBVIEW_ERROR', { text: text ?? '(ohne Text)', stack: stack ?? null });
+      return;
+    }
     if (type === 'clear') {
       this.history = [];
       this.post({ type: 'cleared' });
@@ -294,6 +301,23 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
   const vscode = acquireVsCodeApi();
   const FENCE = String.fromCharCode(96, 96, 96);
   const TICK = String.fromCharCode(96);
+
+  // Fehler in der Ansicht an die Extension melden, damit sie im Log landen.
+  window.onerror = function (message, source, line, column, error) {
+    vscode.postMessage({
+      type: 'webviewError',
+      text: String(message) + ' (' + String(source) + ':' + line + ':' + column + ')',
+      stack: error && error.stack ? String(error.stack) : null,
+    });
+    return false;
+  };
+  window.addEventListener('unhandledrejection', function (event) {
+    vscode.postMessage({
+      type: 'webviewError',
+      text: 'unhandled rejection: ' + String(event.reason && event.reason.message ? event.reason.message : event.reason),
+      stack: event.reason && event.reason.stack ? String(event.reason.stack) : null,
+    });
+  });
   const log = document.getElementById('log');
   const input = document.getElementById('input');
   const send = document.getElementById('send');
