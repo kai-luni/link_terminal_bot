@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import { ChatSettings, ChatViewProvider } from './chatView';
 import { DEFAULT_LOG_PATH, writeLog } from './fileLog';
+import { KNOWLEDGE_FILE_NAME, loadKnowledge } from './knowledge';
 import { SessionContext } from './sessionContext';
 import { TerminalWatcher } from './terminalWatcher';
 import { TerminalCommandEntry } from './types';
@@ -58,6 +59,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
 
   installErrorHandlers();
   debugLog('SESSION', sessionInfo(readChatSettings()));
+  void logKnowledgeState();
   channel.appendLine('Link Terminal Bot aktiv.');
   channel.appendLine('Chat: Seitenleiste rechts -> Link Terminal Bot (oder Befehl "Link Terminal Bot: Chat öffnen").');
   channel.appendLine('Beobachtet wird nur, wenn im Terminal Shell-Integration aktiv ist (Standard in VS Code).');
@@ -141,6 +143,30 @@ function logLine(message: string): void {
 /** Schreibt einen Block in die Debug-Log-Datei (~/link-terminal-bot.log). */
 function debugLog(type: string, data: unknown): void {
   void writeLog(type, data);
+}
+
+/** Beim Start einmal protokollieren, ob und wo eine azure_knowledge.md liegt. */
+async function logKnowledgeState(): Promise<void> {
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!root) {
+    debugLog('KNOWLEDGE_MISSING', { grund: 'kein Workspace-Ordner geöffnet', gesucht: KNOWLEDGE_FILE_NAME });
+    return;
+  }
+  try {
+    const loaded = await loadKnowledge(root);
+    if (loaded) {
+      debugLog('KNOWLEDGE_LOADED', {
+        pfad: loaded.filePath,
+        zeichen: loaded.content.length,
+        gekuerzt: loaded.content.includes('gekürzt'),
+      });
+      channel?.appendLine(`Azure-Wissen: ${loaded.filePath}`);
+    } else {
+      debugLog('KNOWLEDGE_MISSING', { root, gesucht: KNOWLEDGE_FILE_NAME });
+    }
+  } catch (err) {
+    debugLog('KNOWLEDGE_ERROR', { root, fehler: String(err) });
+  }
 }
 
 /** Schreibt einen Befehl ins aktive Terminal, ohne ihn auszuführen (Enter drückt der Nutzer). */

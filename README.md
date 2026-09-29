@@ -116,12 +116,37 @@ Alles landet zusätzlich in **`~/link-terminal-bot.log`** — gleiche Bauart wie
   Wort nicht in `watchedCommands`); pro erstem Wort nur einmal, damit das Log lesbar bleibt
 - `WATCH_ERROR` — die Ausgabe eines Befehls konnte nicht vollständig gelesen werden
 - `WEBVIEW_ERROR` — Fehler in der Chat-Ansicht (dort sieht der Extension-Host sonst nichts)
+- `KNOWLEDGE_LOADED` / `KNOWLEDGE_MISSING` / `KNOWLEDGE_ERROR` — ob eine `azure_knowledge.md`
+  gefunden wurde (mit Pfad und Länge), bzw. warum nicht
 - `UNCAUGHT_EXCEPTION` / `UNHANDLED_REJECTION` — Abbrüche in der Extension, mit Stack
 - `ERROR` — Modell-/HTTP-Fehler bei deinen Fragen
 - `INFO` — dieselben Zeilen wie im Output-Kanal
 
 Der API-Key wird nie geloggt. Ab 2 MB wird die Datei nach `~/link-terminal-bot.log.1`
 weggedreht (eine Generation, ältere wird überschrieben).
+
+## Azure-Wissen (`azure_knowledge.md`)
+
+Liegt im Workspace-Root (oder in einem Unterordner der ersten Ebene) eine
+`azure_knowledge.md`, wird ihr Inhalt automatisch an jede Frage **und** an jeden
+automatischen Hinweis angehängt — damit kennt das Modell Tenant, Subscriptions,
+Resource Groups und Namenskonventionen, statt sie zu erraten.
+
+- Gesucht wird: `<workspace>/azure_knowledge.md`, dann `<workspace>/<unterordner>/azure_knowledge.md`
+  (alphabetisch, versteckte Ordner ausgenommen). Erste Fundstelle gewinnt.
+- Die Datei wird auf 5000 Zeichen gekappt (Ende abgeschnitten, mit Hinweis im Prompt).
+- Ändert sie sich, greift die Änderung bei der nächsten Frage (Cache über mtime).
+- Fehlt sie, passiert nichts — kein Fehler, nur eine `KNOWLEDGE_MISSING`-Zeile im Log.
+- Beim Start steht im Log `KNOWLEDGE_LOADED` mit Pfad und Länge, im Ausgabe-Kanal die Pfadzeile.
+
+Inhalt: nur Orientierungswissen (Subscription-Name/-ID, Resource Groups, Regionen,
+Namenskonventionen, Tabus). **Keine Keys, Passwörter oder Verbindungsstrings.** Wenn das
+Repo öffentlich ist, gehört die Datei nicht in die Git-History — lokal ignorieren reicht:
+
+```
+# .git/info/exclude (klon-lokal, landet in keinem Commit)
+azure_knowledge.md
+```
 
 ## Grenzen
 

@@ -1,6 +1,12 @@
 import * as crypto from 'crypto';
+import { promises as fs } from 'node:fs';
 import * as vscode from 'vscode';
 import { ChatMessage, chatCompletion } from './llmClient';
+import {
+  KNOWLEDGE_FILE_NAME,
+  loadKnowledge,
+  renderKnowledge,
+} from './knowledge';
 import {
   AUTO_SYSTEM_PROMPT,
   SYSTEM_PROMPT,
@@ -101,11 +107,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
     this.autoInFlight = true;
     this.lastAutoAt = Date.now();
+    const knowledge = await this.loadKnowledge();
     const messages = [
       { role: 'system' as const, content: AUTO_SYSTEM_PROMPT },
       {
         role: 'user' as const,
-        content: renderAutoContext(entry, this.context.all, settings.contextCommands),
+        content: renderAutoContext(entry, this.context.all, settings.contextCommands) +
+          (knowledge ? `\n\n${knowledge}` : ''),
       },
     ];
     this.debugLog('AUTO_REQUEST', { model: settings.model, entry, messages });
@@ -152,6 +160,51 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.post({ type: 'context', count: this.context.all.length });
   }
 
+  /**
+   * azure_knowledge.md aus dem Workspace (Root oder ein Unterordner) — gecacht,
+   * solange die Datei unverändert ist. Ohne Datei kommt `undefined` zurück.
+   */
+  private knowledgeCache: { filePath: string; mtimeMs: number; block: string } | null = null;
+  private knowledgeMissAt = 0;
+
+  private async loadKnowledge(): Promise<string | undefined> {
+    const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!root) {
+      return undefined;
+    }
+    try {
+      if (this.knowledgeCache) {
+        const stats = await fs.stat(this.knowledgeCache.filePath).catch(() => undefined);
+        if (stats && stats.mtimeMs === this.knowledgeCache.mtimeMs) {
+          return this.knowledgeCache.block;
+        }
+      } else if (Date.now() - this.knowledgeMissAt < 30_000) {
+        // Gerade eben gesucht und nichts gefunden — nicht bei jeder Frage erneut suchen.
+        return undefined;
+      }
+
+      const loaded = await loadKnowledge(root);
+      if (!loaded) {
+        this.knowledgeMissAt = Date.now();
+        this.debugLog('KNOWLEDGE_MISSING', { root, gesucht: KNOWLEDGE_FILE_NAME });
+        return undefined;
+      }
+      const stats = await fs.stat(loaded.filePath);
+      const block = renderKnowledge(loaded.filePath, loaded.content);
+      this.knowledgeCache = { filePath: loaded.filePath, mtimeMs: stats.mtimeMs, block };
+      this.knowledgeMissAt = 0;
+      this.debugLog('KNOWLEDGE_LOADED', {
+        pfad: loaded.filePath,
+        zeichen: loaded.content.length,
+        gekuerzt: loaded.content.includes('gekürzt'),
+      });
+      return block;
+    } catch (err) {
+      this.debugLog('KNOWLEDGE_ERROR', { root, fehler: String(err) });
+      return undefined;
+    }
+  }
+
   private post(message: Record<string, unknown>): void {
     void this.view?.webview.postMessage(message);
   }
@@ -192,12 +245,13 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const question = text.trim();
     const settings = this.settings();
     const previous = this.history;
+    const knowledge = await this.loadKnowledge();
     const messages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
       ...previous,
       {
         role: 'user',
-        content: `${question}\n\n${renderContext(this.context.all, settings.contextCommands)}`,
+        content: `${question}\n\n${renderContext(this.context.all, settings.contextCommands)}${knowledge ? `\n\n${knowledge}` : ''}`,
       },
     ];
     this.post({ type: 'busy', busy: true });
