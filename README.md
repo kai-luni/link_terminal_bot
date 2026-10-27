@@ -104,6 +104,19 @@ im Terminal arbeiten und im Chat fragen.
 - `Link Terminal Bot: Sitzungskontext anzeigen` (alle mitgelesenen Befehle im Output-Kanal)
 - `Link Terminal Bot: Sitzungskontext leeren`
 
+## Statusleiste
+
+Unten rechts sitzt ein Icon **Terminal Bot**:
+
+- **blau** — Beobachtung aktiv, aber keine `azure_knowledge.md` im Workspace,
+- **grün** — aktiv und Azure-Wissen geladen (Tooltip zeigt Pfad und Zeichenzahl),
+- **grau** mit `⊘` — Beobachtung aus (`linkTerminalBot.enabled = false`).
+
+Klick öffnet den Chat. Die Farben sind über die Theme-Farben
+`linkTerminalBot.statusBarActive` / `.statusBarKnowledge` / `.statusBarOff` einstellbar
+(`workbench.colorCustomizations`). Das Icon reagiert sofort, wenn die Datei angelegt,
+geändert oder gelöscht wird.
+
 ## Einstellungen
 
 - `linkTerminalBot.enabled` — Beobachtung an/aus (Standard: an).

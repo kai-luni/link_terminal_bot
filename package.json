@@ -21,6 +21,38 @@
     "onStartupFinished"
   ],
   "contributes": {
+    "colors": [
+      {
+        "id": "linkTerminalBot.statusBarActive",
+        "description": "Statusleisten-Icon: Beobachtung aktiv, aber keine azure_knowledge.md im Workspace.",
+        "defaults": {
+          "dark": "#0e639c",
+          "light": "#007acc",
+          "highContrast": "#0e639c",
+          "highContrastLight": "#007acc"
+        }
+      },
+      {
+        "id": "linkTerminalBot.statusBarKnowledge",
+        "description": "Statusleisten-Icon: aktiv und Azure-Wissen (azure_knowledge.md) geladen.",
+        "defaults": {
+          "dark": "#1f7a3f",
+          "light": "#388a34",
+          "highContrast": "#1f7a3f",
+          "highContrastLight": "#388a34"
+        }
+      },
+      {
+        "id": "linkTerminalBot.statusBarOff",
+        "description": "Statusleisten-Icon: Beobachtung aus (linkTerminalBot.enabled = false).",
+        "defaults": {
+          "dark": "#6c6c6c",
+          "light": "#8c8c8c",
+          "highContrast": "#6c6c6c",
+          "highContrastLight": "#8c8c8c"
+        }
+      }
+    ],
     "viewsContainers": {
       "secondarySidebar": [
         {

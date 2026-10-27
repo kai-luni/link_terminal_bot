@@ -3,6 +3,7 @@ import { ChatSettings, ChatViewProvider } from './chatView';
 import { DEFAULT_LOG_PATH, writeLog } from './fileLog';
 import { KNOWLEDGE_FILE_NAME, loadKnowledge } from './knowledge';
 import { SessionContext } from './sessionContext';
+import { StatusBar } from './statusBar';
 import { TerminalWatcher } from './terminalWatcher';
 import { TerminalCommandEntry } from './types';
 
@@ -10,16 +11,26 @@ let channel: vscode.OutputChannel | undefined;
 let watcher: TerminalWatcher | undefined;
 let context: SessionContext | undefined;
 let chat: ChatViewProvider | undefined;
+let statusBar: StatusBar | undefined;
 
 export function activate(extensionContext: vscode.ExtensionContext): void {
   channel = vscode.window.createOutputChannel('Link Terminal Bot');
   watcher = new TerminalWatcher(debugLog);
   context = new SessionContext();
+  statusBar = new StatusBar();
   chat = new ChatViewProvider(context, readChatSettings, insertIntoTerminal, logLine, debugLog);
+
+  // Statusleisten-Icon: Datei anlegen/ändern/löschen wirkt sofort auf die Farbe.
+  const knowledgeWatcher = vscode.workspace.createFileSystemWatcher(`**/${KNOWLEDGE_FILE_NAME}`);
+  knowledgeWatcher.onDidCreate(() => void logKnowledgeState());
+  knowledgeWatcher.onDidChange(() => void logKnowledgeState());
+  knowledgeWatcher.onDidDelete(() => void logKnowledgeState());
 
   extensionContext.subscriptions.push(
     channel,
     watcher,
+    statusBar,
+    knowledgeWatcher,
     vscode.window.registerWebviewViewProvider(ChatViewProvider.viewId, chat, {
       webviewOptions: { retainContextWhenHidden: true },
     }),
@@ -41,6 +52,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
       if (e.affectsConfiguration('linkTerminalBot')) {
         debugLog('CONFIG_CHANGE', describeSettings(readChatSettings()));
         logLine('Einstellungen geändert.');
+        void refreshStatus();
       }
     }),
     vscode.window.onDidChangeWindowState((state) => {
@@ -145,15 +157,23 @@ function debugLog(type: string, data: unknown): void {
   void writeLog(type, data);
 }
 
-/** Beim Start einmal protokollieren, ob und wo eine azure_knowledge.md liegt. */
+/** Beim Start und bei jeder Dateiänderung: Statusleiste + Log aktualisieren. */
 async function logKnowledgeState(): Promise<void> {
+  const enabled = vscode.workspace.getConfiguration('linkTerminalBot').get<boolean>('enabled', true);
+  statusBar?.setEnabled(enabled);
+  if (!enabled) {
+    debugLog('KNOWLEDGE_SKIPPED', { grund: 'Beobachtung aus (linkTerminalBot.enabled = false)' });
+    return;
+  }
   const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
   if (!root) {
+    statusBar?.setKnowledge(undefined);
     debugLog('KNOWLEDGE_MISSING', { grund: 'kein Workspace-Ordner geöffnet', gesucht: KNOWLEDGE_FILE_NAME });
     return;
   }
   try {
     const loaded = await loadKnowledge(root);
+    statusBar?.setKnowledge(loaded);
     if (loaded) {
       debugLog('KNOWLEDGE_LOADED', {
         pfad: loaded.filePath,
@@ -165,7 +185,30 @@ async function logKnowledgeState(): Promise<void> {
       debugLog('KNOWLEDGE_MISSING', { root, gesucht: KNOWLEDGE_FILE_NAME });
     }
   } catch (err) {
+    statusBar?.setKnowledge(undefined, String(err));
     debugLog('KNOWLEDGE_ERROR', { root, fehler: String(err) });
+  }
+}
+
+/** Nur die Farbe neu setzen, ohne erneut zu loggen. */
+async function refreshStatus(): Promise<void> {
+  if (!statusBar) {
+    return;
+  }
+  const enabled = vscode.workspace.getConfiguration('linkTerminalBot').get<boolean>('enabled', true);
+  statusBar.setEnabled(enabled);
+  if (!enabled) {
+    return;
+  }
+  const root = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+  if (!root) {
+    statusBar.setKnowledge(undefined);
+    return;
+  }
+  try {
+    statusBar.setKnowledge(await loadKnowledge(root));
+  } catch (err) {
+    statusBar.setKnowledge(undefined, String(err));
   }
 }
 
