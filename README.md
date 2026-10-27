@@ -1,5 +1,51 @@
 # link_terminal_bot
 
+## Schnellstart: bauen und testweise in VS Code installieren
+
+Voraussetzungen: Node.js 20+ und VS Code **1.93 oder neuer**.
+Nicht mit „Install from VSIX" installieren — die Extension ist `private` und unversioniert,
+also läuft der Test über die **Extension Development Host** (auch auf deinem normalen VS Code,
+deine installierten Extensions und Einstellungen bleiben unberührt).
+
+```powershell
+git clone https://github.com/kai-luni/link_terminal_bot.git
+cd link_terminal_bot
+npm install
+npm run compile          # TypeScript -> out/
+code .                   # dieses Verzeichnis in VS Code öffnen
+```
+
+In VS Code dann **`F5`** drücken → *Run and Debug*, Konfiguration
+**„Extension starten (ohne Debugger)"** ist vorgewählt (kompiliert automatisch vorher). Es
+öffnet sich ein zweites Fenster „Extension Development Host": dort im Terminal einmal `az
+account show` oder `az group list` laufen lassen, dann rechts in der Seitenleiste
+**Link Terminal Bot** öffnen (oder `Strg+Shift+P` → *Link Terminal Bot: Chat öffnen*) und
+eine Frage stellen. Ohne `F5` klappt es auch direkt:
+
+```powershell
+code --extensionDevelopmentPath=. --new-window
+```
+
+Einmalig, sonst antwortet der Chat nicht — in den **User Settings** (`settings.json`) des
+Fensters, in dem die Extension läuft:
+
+```json
+{
+  "linkTerminalBot.chatEndpoint": "https://api.openai.com/v1",
+  "linkTerminalBot.chatApiKey": "<dein key>",
+  "linkTerminalBot.chatModel": "gpt-4o-mini"
+}
+```
+
+Beenden: das Development-Host-Fenster schließen. Nach Code-Änderungen `npm run compile`
+(oder `npm run watch`) und im Development-Host `Strg+Shift+P` → *Developer: Reload Window*.
+`F5` bricht mit `Cannot find module 'out/extension.js'` ab, wenn vorher nie kompiliert wurde —
+dann einmal `npm run compile`.
+
+Verifiziert: `npm install` + `npm run compile` mit Node 24.14 / npm 11.9, `tsc` ohne Fehler.
+
+---
+
 VS-Code-Extension: liest Azure-CLI-Befehle im Terminal mit und beantwortet Fragen dazu
 in einer Chat-Ansicht auf der rechten Seite.
 
