@@ -41,6 +41,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
   private lastAutoAt = 0;
   private autoInFlight = false;
   private pendingEntry: TerminalCommandEntry | undefined;
+  private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
 
   constructor(
     private readonly context: SessionContext,
@@ -93,16 +94,37 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     const cooldownMs = Math.max(0, settings.autoAdviseSeconds) * 1000;
     const elapsed = Date.now() - this.lastAutoAt;
     if (!skipCooldown && elapsed < cooldownMs) {
+      // Mindestabstand noch nicht um: genau einen Eintrag merken und nach Ablauf nachziehen.
+      const remainingMs = cooldownMs - elapsed;
+      this.pendingEntry = entry;
+      if (this.cooldownTimer) {
+        clearTimeout(this.cooldownTimer);
+      }
+      this.cooldownTimer = setTimeout(() => {
+        this.cooldownTimer = undefined;
+        const deferred = this.pendingEntry;
+        this.pendingEntry = undefined;
+        if (deferred) {
+          void this.autoAdvise(deferred, true);
+        }
+      }, remainingMs);
       this.log(
-        `[${entry.id}] kein Hinweis: Mindestabstand ${settings.autoAdviseSeconds}s noch nicht um (${Math.round(elapsed / 1000)}s).`,
+        `[${entry.id}] Hinweis zurückgestellt — Mindestabstand ${settings.autoAdviseSeconds}s noch nicht um (${Math.round(elapsed / 1000)}s vergangen, Nachzug in ${Math.ceil(remainingMs / 1000)}s).`,
       );
-      this.debugLog('AUTO_SKIP', {
+      this.debugLog('AUTO_DEFER', {
         grund: 'Mindestabstand noch nicht um',
         vergangenSekunden: Math.round(elapsed / 1000),
+        restMs: remainingMs,
         einstellungSekunden: settings.autoAdviseSeconds,
         entry,
       });
       return;
+    }
+
+    if (this.cooldownTimer) {
+      clearTimeout(this.cooldownTimer);
+      this.cooldownTimer = undefined;
+      this.pendingEntry = undefined;
     }
 
     this.autoInFlight = true;
