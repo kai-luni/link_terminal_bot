@@ -1,3 +1,4 @@
+import { formatTerminalOutput, renderContext } from './contextBudget';
 import { TerminalCommandEntry } from './types';
 
 /** Systemprompt für den Terminal-Assistenten: kurz, ein Befehl, klickbarer Codeblock. */
@@ -51,7 +52,7 @@ export const AUTO_SYSTEM_PROMPT = [
 
 /** True, wenn die Antwort "nichts zu sagen" bedeutet. */
 export function isSilent(answer: string): boolean {
-  const normalized = answer.trim().replace(/[.!?:*\s]+$/g, '').toUpperCase();
+  const normalized = answer.replace(/^[\p{P}\s]+|[\p{P}\s]+$/gu, '').toUpperCase();
   return normalized.length === 0 || normalized === SILENT_TOKEN;
 }
 
@@ -68,73 +69,8 @@ export function firstAzCommand(answer: string): string | undefined {
 
 /** Vergleicht zwei Befehle unabhängig von Leerraum und Anführungszeichen. */
 export function sameCommand(a: string, b: string): boolean {
-  const norm = (value: string): string => value.replace(/["']/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+  const norm = (value: string): string => value.replace(/["']/g, '').replace(/\s+/g, ' ').trim().toLowerCase();
   return norm(a) === norm(b);
-}
-
-export interface ContextSummary {
-  text: string;
-  /** Anzahl der tatsächlich in den Kontext übernommenen Befehle. */
-  includedCount: number;
-  /** Gesamtzahl der Befehle im übergebenen Verlauf. */
-  totalCount: number;
-  /** Geschätzte Tokens des gesamten Kontextblocks (0 bei leerem Verlauf). */
-  tokens: number;
-}
-
-/** Schätzt die Tokenzahl anhand der Zeichenlänge (ca. 4 Zeichen pro Token, aufgerundet). */
-export function estimateTokens(text: string): number {
-  return Math.ceil(text.length / 4);
-}
-
-function formatEntry(entry: TerminalCommandEntry): string {
-  const head = `$ ${entry.command}   -> exit ${entry.exitCode ?? '?'}`;
-  return entry.output ? `${head}\n${entry.output}` : head;
-}
-
-function renderContextBlock(blocks: readonly string[]): string {
-  return `### Terminal-Verlauf (letzte ${blocks.length}, neueste zuletzt)\n${blocks.join('\n\n')}`;
-}
-
-/**
- * Stellt den Kontextblock FIFO zusammen (neueste Befehle zuerst behalten,
- * älteste zuerst weglassen), bis `limit` oder `maxTokens` erreicht ist.
- */
-export function summarizeContext(
-  entries: readonly TerminalCommandEntry[],
-  limit: number,
-  maxTokens = Infinity,
-): ContextSummary {
-  const totalCount = entries.length;
-  const candidates = entries.slice(-Math.max(1, limit));
-  if (candidates.length === 0) {
-    return {
-      text: '### Terminal-Verlauf\n(noch keine Befehle mitgelesen)',
-      includedCount: 0,
-      totalCount,
-      tokens: 0,
-    };
-  }
-
-  const budget = Number.isNaN(maxTokens) ? 1500 : Math.max(0, maxTokens);
-  let pickedBlocks: string[] = [];
-  for (let i = candidates.length - 1; i >= 0; i--) {
-    const nextBlocks = [formatEntry(candidates[i]), ...pickedBlocks];
-    const candidateText = renderContextBlock(nextBlocks);
-    // Den neuesten Befehl immer mitnehmen (sonst wäre der Kontext leer).
-    if (pickedBlocks.length > 0 && estimateTokens(candidateText) > budget) {
-      break;
-    }
-    pickedBlocks = nextBlocks;
-  }
-
-  const text = renderContextBlock(pickedBlocks);
-  return {
-    text,
-    includedCount: pickedBlocks.length,
-    totalCount,
-    tokens: estimateTokens(text),
-  };
 }
 
 /** Kontextblock für den automatischen Hinweis: der letzte Befehl plus Verlauf. */
@@ -145,15 +81,9 @@ export function renderAutoContext(
   maxTokens = Infinity,
 ): string {
   const head = `Gerade beendet:\n$ ${entry.command}   -> exit ${entry.exitCode ?? '?'}`;
-  const output = entry.output ? `\n${entry.output}` : '\n(keine Ausgabe)';
-  return `${head}${output}\n\n${renderContext(history, limit, maxTokens)}`;
+  const output = formatTerminalOutput(entry) || '(keine Ausgabe)';
+  return `${head}\n${output}\n\n${renderContext(history, limit, maxTokens)}`;
 }
 
-/** Baut den Kontextblock, den das Modell als Teil der Frage bekommt. */
-export function renderContext(
-  entries: readonly TerminalCommandEntry[],
-  limit: number,
-  maxTokens = Infinity,
-): string {
-  return summarizeContext(entries, limit, maxTokens).text;
-}
+export { estimateTokens, renderContext, summarizeContext } from './contextBudget';
+export type { ContextSummary } from './contextBudget';

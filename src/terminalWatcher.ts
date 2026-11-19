@@ -1,28 +1,17 @@
 import * as vscode from 'vscode';
+import {
+  DEFAULT_MAX_OUTPUT_CHARS,
+  DEFAULT_WATCHED_COMMANDS,
+  isWatched,
+  readTerminalOutput,
+} from './terminalOutput';
 import { TerminalCommandEntry } from './types';
+
+export { isWatched, truncationMarker } from './terminalOutput';
 
 interface PendingExecution {
   entry: TerminalCommandEntry;
-  /** Erster Teil der Ausgabe — bleibt ab dem ersten Zeichen erhalten. */
-  head: string;
-  /** Letzter Teil der Ausgabe — rollt mit, ältere Zeichen fallen vorn weg. */
-  tail: string;
-  headLimit: number;
-  tailLimit: number;
-  /** Alle Zeichen, die der Stream insgesamt geliefert hat (vor der Kürzung). */
-  totalChars: number;
-  readDone: Promise<void>;
-}
-
-/** Anteil der Ausgabe, der vom Anfang erhalten bleibt (Rest ist Ende). */
-const HEAD_SHARE = 0.3;
-
-/**
- * Hinweistext, der in der Ausgabe an der Stelle der Kürzung steht. Er geht an das Modell,
- * damit ein Fragment nicht als vollständige (oder gar leere) Ausgabe gelesen wird.
- */
-export function truncationMarker(omittedChars: number, totalChars: number): string {
-  return `[... Ausgabe gekürzt: ${omittedChars} von ${totalChars} Zeichen in der Mitte weggelassen ...]`;
+  readDone: ReturnType<typeof readTerminalOutput>;
 }
 
 /**
@@ -78,8 +67,8 @@ export class TerminalWatcher implements vscode.Disposable {
     const cfg = vscode.workspace.getConfiguration('linkTerminalBot');
     return {
       enabled: cfg.get<boolean>('enabled', true),
-      watched: cfg.get<string[]>('watchedCommands', ['az', 'azd']),
-      maxOutputChars: cfg.get<number>('maxOutputChars', 8000),
+      watched: cfg.get<string[]>('watchedCommands', DEFAULT_WATCHED_COMMANDS),
+      maxOutputChars: cfg.get<number>('maxOutputChars', DEFAULT_MAX_OUTPUT_CHARS),
     };
   }
 
@@ -106,47 +95,12 @@ export class TerminalWatcher implements vscode.Disposable {
       durationMs: undefined,
     };
 
-    const maxOutputChars = Number.isFinite(configuredMax) ? Math.max(400, configuredMax) : 8000;
-    const headLimit = Math.round(maxOutputChars * HEAD_SHARE);
-    const pending: PendingExecution = {
+    this.pending.set(e.execution, {
       entry,
-      head: '',
-      tail: '',
-      headLimit,
-      tailLimit: maxOutputChars - headLimit,
-      totalChars: 0,
-      readDone: Promise.resolve(),
-    };
-    this.pending.set(e.execution, pending);
-    pending.readDone = this.readOutput(e.execution, pending);
-  }
-
-  /** Liest den Ausgabe-Stream mit und hält nur die letzten `maxOutputChars` Zeichen. */
-  private async readOutput(
-    execution: vscode.TerminalShellExecution,
-    pending: PendingExecution,
-  ): Promise<void> {
-    try {
-      for await (const chunk of execution.read()) {
-        pending.totalChars += chunk.length;
-        let rest = chunk;
-        if (pending.head.length < pending.headLimit) {
-          const take = Math.min(rest.length, pending.headLimit - pending.head.length);
-          pending.head += rest.slice(0, take);
-          rest = rest.slice(take);
-        }
-        if (rest.length > 0) {
-          pending.tail += rest;
-          if (pending.tail.length > pending.tailLimit) {
-            pending.tail = pending.tail.slice(pending.tail.length - pending.tailLimit);
-          }
-        }
-      }
-    } catch (err) {
-      // Terminal geschlossen oder Lauf abgebrochen: kein harter Fehler, Ausgabe bis dahin reicht.
-      pending.entry.output = `[Ausgabe unvollständig: ${String(err)}]`;
-      this.log('WATCH_ERROR', { id: pending.entry.id, command: pending.entry.command, fehler: String(err) });
-    }
+      readDone: readTerminalOutput(() => e.execution.read(), configuredMax, (err) => {
+        this.log('WATCH_ERROR', { id: entry.id, command: entry.command, fehler: String(err) });
+      }),
+    });
   }
 
   private async handleEnd(e: vscode.TerminalShellExecutionEndEvent): Promise<void> {
@@ -157,24 +111,7 @@ export class TerminalWatcher implements vscode.Disposable {
     this.pending.delete(e.execution);
 
     // Der Stream läuft erst aus, wenn der Befehl wirklich fertig ist.
-    await pending.readDone;
-
-    // Kürzung an den ungetrimmten Längen messen — sonst gilt jeder Zeilenumbruch als Kürzung.
-    const headRaw = pending.head;
-    const tailRaw = pending.tail;
-    const omitted = Math.max(0, pending.totalChars - headRaw.length - tailRaw.length);
-    let read = omitted > 0
-      ? `${headRaw.trimEnd()}\n${truncationMarker(omitted, pending.totalChars)}\n${tailRaw.trimStart()}`
-      : `${headRaw}${tailRaw}`;
-    read = read.trim();
-    if (omitted > 0) {
-      pending.entry.omittedChars = omitted;
-    }
-    if (!pending.entry.output) {
-      pending.entry.output = read;
-    } else if (read) {
-      pending.entry.output = `${pending.entry.output}\n${read}`;
-    }
+    Object.assign(pending.entry, await pending.readDone);
     pending.entry.exitCode = e.exitCode;
     pending.entry.durationMs = Date.now() - pending.entry.startedAt.getTime();
     this._onCommand.fire(pending.entry);
@@ -188,22 +125,4 @@ export class TerminalWatcher implements vscode.Disposable {
     }
     this.disposables.length = 0;
   }
-}
-
-/** Erstes Wort des Befehls gegen die konfigurierte Liste prüfen. */
-export function isWatched(command: string, watched: string[]): boolean {
-  const first = firstWord(command);
-  return first.length > 0 && watched.includes(first);
-}
-
-function firstWord(command: string): string {
-  const tokens = command
-    .trim()
-    .split(/\s+/)
-    .filter((t) => t.length > 0);
-  // "& az ..." (PowerShell-Aufrufoperator) und "sudo az ..." auf das Kommando reduzieren.
-  while (tokens.length > 0 && (tokens[0] === '&' || tokens[0] === 'sudo')) {
-    tokens.shift();
-  }
-  return tokens.length > 0 ? tokens[0] : '';
 }

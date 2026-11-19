@@ -2,7 +2,7 @@
   "name": "link-terminal-bot",
   "displayName": "Link Terminal Bot",
   "description": "Liest Azure-CLI-Befehle im VS-Code-Terminal mit und beantwortet Fragen dazu in einer Chat-Ansicht (Endpunkt + Key in den Einstellungen).",
-  "version": "0.1.11",
+  "version": "0.2.0",
   "publisher": "kai-luni",
   "private": true,
   "engines": {
@@ -185,7 +185,7 @@
     "vscode:prepublish": "npm run compile",
     "compile": "tsc -p ./",
     "watch": "tsc -watch -p ./",
-    "test": "npm run compile && node test/llmClient.test.cjs"
+    "test": "npm run compile && node --test test/"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",

@@ -4,6 +4,7 @@ import { DEFAULT_LOG_PATH, writeLog } from './fileLog';
 import { KNOWLEDGE_FILE_NAME, loadKnowledge } from './knowledge';
 import { SessionContext } from './sessionContext';
 import { StatusBar } from './statusBar';
+import { DEFAULT_MAX_OUTPUT_CHARS, DEFAULT_WATCHED_COMMANDS } from './terminalOutput';
 import { TerminalWatcher } from './terminalWatcher';
 import { TerminalCommandEntry } from './types';
 
@@ -124,8 +125,8 @@ function describeSettings(settings: ChatSettings, session?: SessionContext): Rec
     autoAdviseSekunden: settings.autoAdviseSeconds,
     chatContextCommands: settings.contextCommands,
     contextMaxTokens: settings.contextMaxTokens,
-    watchedCommands: cfg.get<string[]>('watchedCommands', ['az', 'azd']),
-    maxOutputChars: cfg.get<number>('maxOutputChars', 4000),
+    watchedCommands: cfg.get<string[]>('watchedCommands', DEFAULT_WATCHED_COMMANDS),
+    maxOutputChars: cfg.get<number>('maxOutputChars', DEFAULT_MAX_OUTPUT_CHARS),
     historySize: cfg.get<number>('historySize', 20),
     aktiv: cfg.get<boolean>('enabled', true),
     befehleImKontext: session?.all.length ?? 0,

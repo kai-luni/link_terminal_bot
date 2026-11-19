@@ -1,5 +1,11 @@
 # Änderungsverzeichnis
 
+## 0.2.0 — 19. November 2026
+
+- Für Testbarkeit umgebaut: reine Logik liegt jetzt in eigenen Modulen (`terminalOutput`, `contextBudget`, `autoAdvisePolicy`, `statusText`, `chatSettings`, `chatSession`, `chatWebview`); `chatView` und `terminalWatcher` sind nur noch die VS-Code-Anbindung. Verhalten und Einstellungen unverändert.
+- Tests auf `node:test` umgestellt, 43 Prüfungen über alle Funktionen: Kürzung mit Kopf/Ende und Marker, FIFO-Kontext samt Token-Budget, Auto-Hinweis-Modi und Mindestabstand, Aufgabe im Hinweis, Wiederholungsschutz, Sperre zwischen Frage und Hinweis, Verlauf/Epoche, Statuszeile, Quellen-Dedupe, Fehlermeldungen, kein API-Key in der Webview.
+- `npm test` führt Kompilierung und alle Tests aus.
+
 ## 0.1.11 — 19. November 2026
 
 - Die zugeklappte Statuszeile zeigt das Token-Budget mit: "Kontext · 2 Befehle · 1.2k / 500k Tokens" (belegt / Maximum aus `contextMaxTokens`).

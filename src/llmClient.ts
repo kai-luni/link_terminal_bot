@@ -114,27 +114,36 @@ export function extractResponsesAnswer(payload: unknown): string {
   if (sources.size === 0) { return answer; }
   // Quellen nur an einer Stelle zeigen: Zitat-Markup und eigene Quellenzeilen des Modells
   // entfernen, die Liste unten bleibt.
-  let cleaned = answer;
-  for (const url of sources.keys()) {
-    const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    cleaned = cleaned.replace(new RegExp(`\\[[^\\]]*\\]\\(${escaped}[^)]*\\)`, 'g'), '');
-    cleaned = cleaned.replace(new RegExp(`${escaped}(?:#[^\\s)]*)?`, 'g'), '');
+  const lines = answer.split('\n');
+  const sourceLine = lines.findIndex((line, index) =>
+    index >= lines.length - 6 && /^\s*(?:#{1,6}\s+)?\**\s*Quellen?\s*\**\s*:/i.test(line),
+  );
+  if (sourceLine >= 0) {
+    lines.length = sourceLine;
   }
-  const lines = cleaned.split('\n');
-  const lastSourceLine = lines.map(line => /^\s*\**\s*Quellen?\s*\**\s*:/.test(line)).lastIndexOf(true);
-  if (lastSourceLine >= 0 && lines.length - lastSourceLine <= 6) {
-    lines.length = lastSourceLine;
-  }
-  cleaned = lines
+  const cleaned = lines
     .join('\n')
-    .replace(/\(\s*\)/g, '')
-    .replace(/\[\s*\]/g, '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/[ \t]+$/gm, '')
-    .replace(/\n{3,}/g, '\n\n')
+    .split('```')
+    .map((part, index) => index % 2 === 0 ? stripInlineCitations(part, sources.keys()) : part)
+    .join('```')
     .trim();
   const links = Array.from(sources, ([url, title]) => `- ${title}: ${url}`);
-  return `${cleaned || answer}\n\nQuellen:\n${links.join('\n')}`;
+  return [cleaned, `Quellen:\n${links.join('\n')}`].filter(Boolean).join('\n\n');
+}
+
+function stripInlineCitations(text: string, urls: Iterable<string>): string {
+  for (const url of urls) {
+    const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const link = `${escaped}(?:#[^\\s)]*)?`;
+    text = text.replace(new RegExp(`\\[[^\\]]*\\]\\(${link}(?:\\s+"[^"]*")?\\)`, 'g'), '');
+    text = text.replace(new RegExp(`${link}(?=[.,!?;:]*(?:$|[\\s<>()\\[\\]{}"']))`, 'g'), '');
+  }
+  return text
+    .replace(/\([ \t]*\)/g, '')
+    .replace(/\[[ \t]*\]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n');
 }
 
 /**
@@ -145,7 +154,7 @@ export function extractResponsesAnswer(payload: unknown): string {
 export function describeFetchFailure(err: unknown, url: string, timeoutMs: number, model: string): Error {
   const messages: string[] = [];
   const codes: string[] = [];
-  const hostPort = url.replace(/^https?:\/\//, '').split('/')[0];
+  const hostPort = url.replace(/^https?:\/\//i, '').split(/[/?#]/)[0] || url;
 
   const walk = (value: unknown, depth: number): void => {
     if (!value || depth > 4) {
@@ -158,8 +167,9 @@ export function describeFetchFailure(err: unknown, url: string, timeoutMs: numbe
       cause?: unknown;
       errors?: unknown;
     };
-    if (typeof e.message === 'string' && e.message.trim().length > 0 && !messages.includes(e.message)) {
-      messages.push(e.message);
+    const message = typeof value === 'string' ? value : e.message;
+    if (typeof message === 'string' && message.trim().length > 0 && !messages.includes(message)) {
+      messages.push(message);
     }
     if (typeof e.code === 'string' && !codes.includes(e.code)) {
       codes.push(e.code);
@@ -179,6 +189,8 @@ export function describeFetchFailure(err: unknown, url: string, timeoutMs: numbe
   let hint: string;
   if (codes.includes('TIMEOUT')) {
     hint = `Keine Antwort innerhalb von ${Math.round(timeoutMs / 1000)} s — Endpunkt antwortet nicht oder rechnet zu lange.`;
+  } else if (codes.includes('ERR_INVALID_URL')) {
+    hint = 'Ungültige Endpoint-URL — Einstellung linkTerminalBot.chatEndpoint prüfen.';
   } else if (codes.includes('ECONNREFUSED')) {
     hint = `Verbindung abgelehnt: auf ${hostPort} hört nichts. Läuft der Endpunkt (z. B. der LiteLLM-Proxy)?`;
   } else if (codes.includes('ENOTFOUND')) {
@@ -230,7 +242,13 @@ export async function chatCompletion(options: ChatRequestOptions): Promise<strin
   }
   const url = resolveEndpoint(options.endpoint, mode);
   const timeoutMs = options.timeoutMs ?? (options.webSearch ? 180_000 : 120_000);
-  const isAzure = /(^|\.)(openai\.azure\.com|services\.ai\.azure\.com|cognitiveservices\.azure\.com)$/i.test(new URL(url).hostname);
+  let hostname: string;
+  try {
+    hostname = new URL(url).hostname;
+  } catch (err) {
+    throw describeFetchFailure(err, url, timeoutMs, options.model);
+  }
+  const isAzure = /(^|\.)(openai\.azure\.com|services\.ai\.azure\.com|cognitiveservices\.azure\.com)$/i.test(hostname);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
     ...(mode === 'responses'
@@ -249,6 +267,7 @@ export async function chatCompletion(options: ChatRequestOptions): Promise<strin
     : { model: options.model, messages: options.messages };
 
   let response: Response;
+  let body: string;
   try {
     response = await fetch(url, {
       method: 'POST',
@@ -256,11 +275,11 @@ export async function chatCompletion(options: ChatRequestOptions): Promise<strin
       body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(timeoutMs),
     });
+    body = await response.text();
   } catch (err) {
     throw describeFetchFailure(err, url, timeoutMs, options.model);
   }
 
-  const body = await response.text();
   if (!response.ok) {
     throw new Error(
       `HTTP ${response.status} ${response.statusText || ''}`.trim() +
