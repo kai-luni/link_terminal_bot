@@ -106,7 +106,7 @@ export class TerminalWatcher implements vscode.Disposable {
       durationMs: undefined,
     };
 
-    const maxOutputChars = Math.max(400, configuredMax);
+    const maxOutputChars = Number.isFinite(configuredMax) ? Math.max(400, configuredMax) : 8000;
     const headLimit = Math.round(maxOutputChars * HEAD_SHARE);
     const pending: PendingExecution = {
       entry,
@@ -159,13 +159,15 @@ export class TerminalWatcher implements vscode.Disposable {
     // Der Stream läuft erst aus, wenn der Befehl wirklich fertig ist.
     await pending.readDone;
 
-    const head = pending.head.trim();
-    const tail = pending.tail.trim();
-    const kept = head.length + tail.length;
-    const omitted = Math.max(0, pending.totalChars - kept);
-    let read = tail ? `${head}\n${tail}` : head;
+    // Kürzung an den ungetrimmten Längen messen — sonst gilt jeder Zeilenumbruch als Kürzung.
+    const headRaw = pending.head;
+    const tailRaw = pending.tail;
+    const omitted = Math.max(0, pending.totalChars - headRaw.length - tailRaw.length);
+    let read = omitted > 0
+      ? `${headRaw.trimEnd()}\n${truncationMarker(omitted, pending.totalChars)}\n${tailRaw.trimStart()}`
+      : `${headRaw}${tailRaw}`;
+    read = read.trim();
     if (omitted > 0) {
-      read = `${head}\n${truncationMarker(omitted, pending.totalChars)}\n${tail}`;
       pending.entry.omittedChars = omitted;
     }
     if (!pending.entry.output) {

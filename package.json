@@ -2,7 +2,7 @@
   "name": "link-terminal-bot",
   "displayName": "Link Terminal Bot",
   "description": "Liest Azure-CLI-Befehle im VS-Code-Terminal mit und beantwortet Fragen dazu in einer Chat-Ansicht (Endpunkt + Key in den Einstellungen).",
-  "version": "0.1.4",
+  "version": "0.1.5",
   "publisher": "kai-luni",
   "private": true,
   "engines": {

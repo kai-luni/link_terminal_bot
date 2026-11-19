@@ -1,5 +1,11 @@
 # Änderungsverzeichnis
 
+## 0.1.5 — 19. November 2026
+
+- Behoben: Jede Ausgabe mit Zeilenumbruch wurde fälschlich als gekürzt markiert (Kürzung wird jetzt an den ungetrimmten Längen gemessen).
+- Behoben: Ungültiger Wert bei `maxOutputChars` (NaN) ließ das Ausgabefenster unbegrenzt wachsen.
+- Bei fehlender Kürzung werden Kopf und Ende ohne eingefügten Zeilenumbruch zusammengesetzt.
+
 ## 0.1.4 — 19. November 2026
 
 - Neuer API-Modus `responses` mit Azure OpenAI v1 Responses API (`/openai/v1/responses`).
