@@ -2,7 +2,7 @@
   "name": "link-terminal-bot",
   "displayName": "Link Terminal Bot",
   "description": "Liest Azure-CLI-Befehle im VS-Code-Terminal mit und beantwortet Fragen dazu in einer Chat-Ansicht (Endpunkt + Key in den Einstellungen).",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "publisher": "kai-luni",
   "private": true,
   "engines": {
@@ -118,6 +118,11 @@
           "type": "number",
           "default": 5,
           "description": "Wie viele der letzten Befehle als Kontext an das Modell geschickt werden."
+        },
+        "linkTerminalBot.contextMaxTokens": {
+          "type": "number",
+          "default": 1500,
+          "description": "Wie viele Tokens Terminalkontext höchstens mitgeschickt werden (Schätzung ca. 4 Zeichen pro Token); ältere Befehle fallen zuerst weg."
         },
         "linkTerminalBot.chatEndpoint": {
           "type": "string",

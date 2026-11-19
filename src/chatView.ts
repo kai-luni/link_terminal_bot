@@ -13,6 +13,7 @@ import {
   isSilent,
   renderAutoContext,
   renderContext,
+  summarizeContext,
 } from './prompt';
 import { SessionContext } from './sessionContext';
 import { TerminalCommandEntry } from './types';
@@ -27,6 +28,7 @@ export interface ChatSettings {
   webSearch: boolean;
   webSearchAutoAdvise: boolean;
   contextCommands: number;
+  contextMaxTokens: number;
   autoAdvise: AutoAdviseMode;
   autoAdviseSeconds: number;
 }
@@ -149,7 +151,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       { role: 'system' as const, content: AUTO_SYSTEM_PROMPT },
       {
         role: 'user' as const,
-        content: renderAutoContext(entry, this.context.all, settings.contextCommands) +
+        content: renderAutoContext(entry, this.context.all, settings.contextCommands, settings.contextMaxTokens) +
           (knowledge ? `\n\n${knowledge}` : ''),
       },
     ];
@@ -210,9 +212,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
   }
 
-  /** Meldet der Ansicht, wie viele Befehle gerade als Kontext bereitliegen. */
+  /** Meldet der Ansicht den aktuellen Kontextstand (Befehle, Tokens, Budget). */
   notifyContext(): void {
-    this.post({ type: 'context', count: this.context.all.length });
+    const settings = this.settings();
+    const summary = summarizeContext(
+      this.context.all,
+      settings.contextCommands,
+      settings.contextMaxTokens,
+    );
+    this.post({
+      type: 'context',
+      count: summary.includedCount,
+      totalCount: summary.totalCount,
+      tokens: summary.tokens,
+      maxTokens: settings.contextMaxTokens,
+      contextCommands: settings.contextCommands,
+      model: settings.model,
+      endpoint: settings.endpoint,
+    });
   }
 
   /**
@@ -295,8 +312,15 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     if (type === 'settings') {
       // Den API-Schlüssel niemals an die Webview weiterreichen.
-      const { model, apiMode, webSearch } = this.settings();
-      this.post({ type: 'config', settings: { model, apiMode, webSearch } });
+      const { model, endpoint, apiMode, webSearch, contextCommands, contextMaxTokens } = this.settings();
+      this.post({
+        type: 'config',
+        settings: { model, endpoint, apiMode, webSearch, contextCommands, contextMaxTokens },
+      });
+      return;
+    }
+    if (type === 'context') {
+      this.notifyContext();
       return;
     }
     if (type === 'insert') {
@@ -330,7 +354,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       ...previous,
       {
         role: 'user',
-        content: `${question}\n\n${renderContext(this.context.all, settings.contextCommands)}${knowledge ? `\n\n${knowledge}` : ''}`,
+        content: `${question}\n\n${renderContext(this.context.all, settings.contextCommands, settings.contextMaxTokens)}${knowledge ? `\n\n${knowledge}` : ''}`,
       },
     ];
     this.debugLog('ASK', { model: settings.model, frage: question, messages });
@@ -377,9 +401,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
 export function renderHtml(webview: vscode.Webview, settings: ChatSettings): string {
   const nonce = crypto.randomBytes(16).toString('hex');
-  const hint = settings.endpoint.trim().length > 0
-    ? `${settings.model} @ ${settings.endpoint}`
-    : 'Kein Endpunkt gesetzt: linkTerminalBot.chatEndpoint in den Einstellungen füllen.';
+  const initialConfig = {
+    model: settings.model,
+    endpoint: settings.endpoint,
+    contextCommands: settings.contextCommands,
+    contextMaxTokens: settings.contextMaxTokens,
+  };
 
   return `<!DOCTYPE html>
 <html lang="de">
@@ -436,12 +463,55 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
     border: none; padding: 0 10px; cursor: pointer;
   }
   #send:disabled { opacity: 0.5; cursor: default; }
-  #bar { display: flex; justify-content: space-between; align-items: center; }
+  #bar {
+    padding: 2px 8px 4px 8px;
+    color: var(--vscode-descriptionForeground);
+    font-size: 0.9em;
+  }
+  #status {
+    padding: 0 0 2px 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #status:empty { display: none; }
+  #ctxDetails summary {
+    cursor: pointer;
+    user-select: none;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #ctxBody {
+    margin-top: 4px;
+    padding-left: 12px;
+    display: grid;
+    grid-template-columns: auto 1fr;
+    gap: 2px 8px;
+  }
+  #ctxBody .lbl { opacity: 0.8; }
+  #ctxBody .val {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
 </style>
 </head>
 <body>
 <div id="log"></div>
-<div id="bar"><span class="meta" id="status"></span><span class="meta" id="ctx"></span></div>
+<div id="bar">
+  <div class="meta" id="status"></div>
+  <details id="ctxDetails">
+    <summary id="ctxSummary">Kontext · 0 Befehle · 0 Tokens</summary>
+    <div id="ctxBody">
+      <span class="lbl">Modell</span><span class="val" id="dModel"></span>
+      <span class="lbl">Endpoint</span><span class="val" id="dEndpoint"></span>
+      <span class="lbl">Befehle im Kontext</span><span class="val" id="dCommands"></span>
+      <span class="lbl">Token-Budget</span><span class="val" id="dBudget"></span>
+      <span class="lbl">Belegte Tokens</span><span class="val" id="dTokens"></span>
+    </div>
+  </details>
+</div>
 <div id="row">
   <textarea id="input" placeholder="Was ist das Problem? (Enter = senden, Shift+Enter = neue Zeile)"></textarea>
   <button id="send">Senden</button>
@@ -471,10 +541,51 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
   const input = document.getElementById('input');
   const send = document.getElementById('send');
   const status = document.getElementById('status');
-  const ctx = document.getElementById('ctx');
-  const initial = ${JSON.stringify(hint)};
+  const ctxDetails = document.getElementById('ctxDetails');
+  const ctxSummary = document.getElementById('ctxSummary');
+  const dModel = document.getElementById('dModel');
+  const dEndpoint = document.getElementById('dEndpoint');
+  const dCommands = document.getElementById('dCommands');
+  const dBudget = document.getElementById('dBudget');
+  const dTokens = document.getElementById('dTokens');
+  const cfg = ${JSON.stringify(initialConfig)};
+  let ctxState = { count: 0, totalCount: 0, tokens: 0 };
+  let initial = endpointHint(cfg.endpoint);
   let busy = false;
   let statusTimer = null;
+
+  function endpointHint(endpoint) {
+    return endpoint && endpoint.trim().length > 0
+      ? ''
+      : 'Kein Endpunkt gesetzt: linkTerminalBot.chatEndpoint in den Einstellungen füllen.';
+  }
+
+  function formatTokens(n) {
+    return n >= 1000 ? (n / 1000).toFixed(1).replace(/\\.0$/, '') + 'k' : String(n);
+  }
+
+  function renderStatusBar() {
+    const unit = ctxState.count === 1 ? 'Befehl' : 'Befehle';
+    ctxSummary.textContent = 'Kontext · ' + ctxState.count + ' ' + unit + ' · ' + formatTokens(ctxState.tokens) + ' Tokens';
+    dModel.textContent = cfg.model || '(nicht gesetzt)';
+    dEndpoint.textContent = cfg.endpoint && cfg.endpoint.trim().length > 0 ? cfg.endpoint : '(nicht gesetzt)';
+    dCommands.textContent = ctxState.totalCount > ctxState.count
+      ? ctxState.count + ' von ' + ctxState.totalCount + ' (Limit ' + cfg.contextCommands + ')'
+      : ctxState.count + ' (Limit ' + cfg.contextCommands + ')';
+    dBudget.textContent = cfg.contextMaxTokens + ' Tokens';
+    dTokens.textContent = ctxState.tokens + ' Tokens';
+  }
+
+  // Aufklapp-Zustand der Statusleiste zwischen Panel-Wechseln merken.
+  const savedState = vscode.getState() || {};
+  if (savedState.detailsOpen === true) {
+    ctxDetails.open = true;
+  }
+  ctxDetails.addEventListener('toggle', () => {
+    const prev = vscode.getState() || {};
+    vscode.setState(Object.assign({}, prev, { detailsOpen: ctxDetails.open }));
+  });
+  renderStatusBar();
 
   function setStatus(text) {
     status.textContent = text;
@@ -638,8 +749,26 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
     } else if (msg.type === 'busy') {
       setBusy(!!msg.busy);
       if (msg.busy) { showTyping(); } else { hideTyping(); }
+    } else if (msg.type === 'config' && msg.settings) {
+      Object.assign(cfg, msg.settings);
+      initial = endpointHint(cfg.endpoint);
+      if (!busy && !statusTimer) { status.textContent = initial; }
+      renderStatusBar();
     } else if (msg.type === 'context') {
-      ctx.textContent = msg.count + ' Befehle im Kontext';
+      ctxState = {
+        count: typeof msg.count === 'number' ? msg.count : 0,
+        totalCount: typeof msg.totalCount === 'number' ? msg.totalCount : 0,
+        tokens: typeof msg.tokens === 'number' ? msg.tokens : 0,
+      };
+      if (typeof msg.maxTokens === 'number') { cfg.contextMaxTokens = msg.maxTokens; }
+      if (typeof msg.contextCommands === 'number') { cfg.contextCommands = msg.contextCommands; }
+      if (typeof msg.model === 'string') { cfg.model = msg.model; }
+      if (typeof msg.endpoint === 'string') {
+        cfg.endpoint = msg.endpoint;
+        initial = endpointHint(cfg.endpoint);
+        if (!busy && !statusTimer) { status.textContent = initial; }
+      }
+      renderStatusBar();
     } else if (msg.type === 'inserted') {
       setStatus('ins Terminal eingefügt: ' + msg.text);
     } else if (msg.type === 'cleared') {

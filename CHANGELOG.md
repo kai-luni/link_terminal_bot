@@ -1,5 +1,11 @@
 # Änderungsverzeichnis
 
+## 0.1.8 — 19. November 2026
+
+- Statusleiste im Chat ist zugeklappt einzeilig ("Kontext · N Befehle · X Tokens"); Modell, Endpoint, Budget und belegte Tokens erscheinen erst beim Aufklappen — der Zustand bleibt erhalten.
+- Neue Einstellung `linkTerminalBot.contextMaxTokens` (Standard 1500): Terminalkontext wird FIFO aufgefüllt, älteste Befehle fallen zuerst weg, der neueste bleibt immer. Schätzung ca. 4 Zeichen pro Token.
+- README um `contextMaxTokens` und die aufklappbare Statusleiste ergänzt.
+
 ## 0.1.7 — 19. November 2026
 
 - Keine parallelen Gesprächsstränge mehr: Frage und automatischer Hinweis teilen sich eine Sperre. Läuft eine Frage, wird der Terminalhinweis zurückgestellt; läuft ein Hinweis und der Nutzer fragt, wird die alte Hinweisantwort verworfen statt angezeigt.

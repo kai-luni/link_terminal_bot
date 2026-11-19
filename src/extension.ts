@@ -53,6 +53,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
         debugLog('CONFIG_CHANGE', describeSettings(readChatSettings()));
         logLine('Einstellungen geändert.');
         void refreshStatus();
+        chat?.notifyContext();
       }
     }),
     vscode.window.onDidChangeWindowState((state) => {
@@ -122,6 +123,7 @@ function describeSettings(settings: ChatSettings, session?: SessionContext): Rec
     autoAdvise: settings.autoAdvise,
     autoAdviseSekunden: settings.autoAdviseSeconds,
     chatContextCommands: settings.contextCommands,
+    contextMaxTokens: settings.contextMaxTokens,
     watchedCommands: cfg.get<string[]>('watchedCommands', ['az', 'azd']),
     maxOutputChars: cfg.get<number>('maxOutputChars', 4000),
     historySize: cfg.get<number>('historySize', 20),
@@ -260,6 +262,7 @@ function readChatSettings(): ChatSettings {
     webSearch: cfg.get<boolean>('webSearch', false),
     webSearchAutoAdvise: cfg.get<boolean>('webSearchAutoAdvise', false),
     contextCommands: cfg.get<number>('chatContextCommands', 5),
+    contextMaxTokens: cfg.get<number>('contextMaxTokens', 1500),
     autoAdvise: mode === 'off' || mode === 'always' ? mode : 'errors',
     autoAdviseSeconds: cfg.get<number>('autoAdviseSeconds', 8),
   };

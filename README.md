@@ -161,6 +161,11 @@ Klick öffnet den Chat. Die Farben sind über die Theme-Farben
 (`workbench.colorCustomizations`). Das Icon reagiert sofort, wenn die Datei angelegt,
 geändert oder gelöscht wird.
 
+Im Chat-Panel zeigt eine standardmäßig zugeklappte Statusleiste kompakt Befehlsanzahl
+und belegte Tokens (`Kontext · N Befehle · X Tokens`); aufgeklappt erscheinen Modell,
+Endpoint, Befehle im Kontext, Token-Budget und belegte Tokens (der Aufklapp-Zustand bleibt
+beim Panel-Wechsel erhalten).
+
 ## Einstellungen
 
 - `linkTerminalBot.enabled` — Beobachtung an/aus (Standard: an).
@@ -168,6 +173,9 @@ geändert oder gelöscht wird.
 - `linkTerminalBot.maxOutputChars` — wie viel Ausgabe pro Befehl behalten wird (4000).
 - `linkTerminalBot.historySize` — wie viele Befehle im Kontext bleiben (20).
 - `linkTerminalBot.chatContextCommands` — wie viele davon ans Modell gehen (5).
+- `linkTerminalBot.contextMaxTokens` — maximales Token-Budget für den Terminalkontext
+  (Standard: 1500, Schätzung ca. 4 Zeichen/Token, aufgerundet); ältere Befehle fallen nach
+  FIFO-Prinzip zuerst weg, der neueste Befehl bleibt immer erhalten.
 - `linkTerminalBot.chatEndpoint` / `chatApiKey` / `chatModel` — siehe oben.
 
 ## Bedienung
