@@ -8,23 +8,49 @@ export interface ChatMessage {
   content: string;
 }
 
+export type ChatApiMode = 'chat_completions' | 'responses';
+
 export interface ChatRequestOptions {
   /** Basis-URL (z. B. https://api.openai.com/v1) oder volle /chat/completions-URL. */
   endpoint: string;
   apiKey: string;
   model: string;
   messages: ChatMessage[];
-  /** Standard: 120 s. */
+  /** Alte Chat-Completions-API oder Azure/OpenAI Responses API. */
+  apiMode?: ChatApiMode;
+  /** Nur im Responses-Modus: Modell darf Websuche verwenden. */
+  webSearch?: boolean;
+  /** Standard: 120 s, bei Websuche 180 s. */
   timeoutMs?: number;
+  /** Meldet die tatsächliche Zahl abgerechneter Suchanfragen, sofern Azure sie liefert. */
+  onWebSearchUsage?: (usage: { used: boolean; requests?: number }) => void;
 }
 
-/** Hängt den Pfad an, wenn der Nutzer nur die Basis-URL eingetragen hat. */
-export function resolveEndpoint(endpoint: string): string {
+/** Hängt je nach API-Modus den passenden Pfad an. */
+export function resolveEndpoint(endpoint: string, mode: ChatApiMode = 'chat_completions'): string {
   const trimmed = endpoint.trim().replace(/\/+$/, '');
   if (!trimmed) {
     throw new Error('Kein Chat-Endpunkt gesetzt (Einstellung linkTerminalBot.chatEndpoint).');
   }
-  if (/\/chat\/completions$/.test(trimmed)) {
+  if (mode === 'responses') {
+    if (/\/responses(?:\?.*)?$/.test(trimmed)) {
+      return trimmed;
+    }
+    if (/\/chat\/completions(?:\?.*)?$/.test(trimmed) || /\/openai\/deployments\//.test(trimmed)) {
+      throw new Error('Für Responses muss chatEndpoint die Azure-v1-Basis-URL sein: https://RESSOURCE.openai.azure.com/openai/v1');
+    }
+    if (trimmed.includes('?')) {
+      throw new Error('Für Responses bitte eine Azure-v1-URL ohne ?api-version=... verwenden.');
+    }
+    if (!/\/openai\/v1$/.test(trimmed) && /\.openai\.azure\.com(?:\/|$)/.test(trimmed)) {
+      throw new Error('Azure Responses benötigt die Basis-URL mit /openai/v1 am Ende.');
+    }
+    return `${trimmed}/responses`;
+  }
+  if (/\/responses(?:\?.*)?$/.test(trimmed)) {
+    throw new Error('Ein /responses-Endpunkt benötigt chatApiMode = responses.');
+  }
+  if (/\/chat\/completions(?:\?.*)?$/.test(trimmed)) {
     return trimmed;
   }
   return `${trimmed}/chat/completions`;
@@ -45,6 +71,49 @@ export function extractAnswer(payload: unknown): string {
     throw new Error(apiError);
   }
   throw new Error('Antwort ohne Inhalt (kein choices[0].message.content).');
+}
+
+/** Liest Responses-Text und Quellen (URL-Citations) aus dem Azure-Format. */
+export function extractResponsesAnswer(payload: unknown): string {
+  const data = payload as {
+    output_text?: unknown;
+    output?: {
+      type?: string;
+      content?: {
+        type?: string;
+        text?: string;
+        annotations?: { type?: string; url?: string; title?: string }[];
+      }[];
+    }[];
+    error?: { message?: string };
+  };
+  if (typeof data?.error?.message === 'string') {
+    throw new Error(data.error.message);
+  }
+  const pieces: string[] = [];
+  const sources = new Map<string, string>();
+  for (const item of data?.output ?? []) {
+    if (item.type !== 'message') { continue; }
+    for (const content of item.content ?? []) {
+      if (content.type !== 'output_text') { continue; }
+      if (typeof content.text === 'string' && content.text.trim()) {
+        pieces.push(content.text);
+      }
+      for (const annotation of content.annotations ?? []) {
+        if (annotation.type === 'url_citation' && typeof annotation.url === 'string' && /^https?:\/\//.test(annotation.url)) {
+          sources.set(annotation.url, annotation.title || 'Quelle');
+        }
+      }
+    }
+  }
+  const answer = pieces.join('\n\n').trim() ||
+    (typeof data?.output_text === 'string' ? data.output_text.trim() : '');
+  if (!answer) {
+    throw new Error('Responses API hat keinen Antworttext geliefert (output[].content[].text fehlt).');
+  }
+  if (sources.size === 0) { return answer; }
+  const links = Array.from(sources, ([url, title]) => `- ${title}: ${url}`);
+  return `${answer}\n\nQuellen:\n${links.join('\n')}`;
 }
 
 /**
@@ -134,22 +203,36 @@ function hintForStatus(status: number): string {
 }
 
 export async function chatCompletion(options: ChatRequestOptions): Promise<string> {
-  const url = resolveEndpoint(options.endpoint);
-  const timeoutMs = options.timeoutMs ?? 120_000;
+  const mode = options.apiMode ?? 'chat_completions';
+  if (options.webSearch && mode !== 'responses') {
+    throw new Error('Websuche erfordert chatApiMode = responses.');
+  }
+  const url = resolveEndpoint(options.endpoint, mode);
+  const timeoutMs = options.timeoutMs ?? (options.webSearch ? 180_000 : 120_000);
+  const isAzure = /(^|\.)(openai\.azure\.com|services\.ai\.azure\.com|cognitiveservices\.azure\.com)$/i.test(new URL(url).hostname);
   const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    // Beides setzen: OpenAI-kompatible Endpunkte wollen Authorization,
-    // Azure OpenAI akzeptiert api-key.
-    Authorization: `Bearer ${options.apiKey}`,
-    'api-key': options.apiKey,
+    ...(mode === 'responses'
+      ? (isAzure ? { 'api-key': options.apiKey } : { Authorization: `Bearer ${options.apiKey}` })
+      // Den bisherigen Chat-Completions-Modus unverändert lassen.
+      : { Authorization: `Bearer ${options.apiKey}`, 'api-key': options.apiKey }),
   };
+
+  const requestBody = mode === 'responses'
+    ? {
+        model: options.model,
+        instructions: options.messages.filter(m => m.role === 'system').map(m => m.content).join('\n\n'),
+        input: options.messages.filter(m => m.role !== 'system'),
+        ...(options.webSearch ? { tools: [{ type: 'web_search' }] } : {}),
+      }
+    : { model: options.model, messages: options.messages };
 
   let response: Response;
   try {
     response = await fetch(url, {
       method: 'POST',
       headers,
-      body: JSON.stringify({ model: options.model, messages: options.messages }),
+      body: JSON.stringify(requestBody),
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (err) {
@@ -171,5 +254,17 @@ export async function chatCompletion(options: ChatRequestOptions): Promise<strin
   } catch {
     throw new Error(`Antwort ist kein JSON (Endpoint ${url}).\nAnfang der Antwort: ${body.slice(0, 300)}`);
   }
-  return extractAnswer(payload);
+  if (mode === 'responses' && options.onWebSearchUsage) {
+    const data = payload as {
+      output?: { type?: string }[];
+      tool_usage?: { web_search?: { num_requests?: number } };
+    };
+    const used = Array.isArray(data.output) && data.output.some(item => item.type === 'web_search_call');
+    const requests = data.tool_usage?.web_search?.num_requests;
+    options.onWebSearchUsage({
+      used: !!used,
+      ...(typeof requests === 'number' && Number.isFinite(requests) && requests >= 0 ? { requests } : {}),
+    });
+  }
+  return mode === 'responses' ? extractResponsesAnswer(payload) : extractAnswer(payload);
 }

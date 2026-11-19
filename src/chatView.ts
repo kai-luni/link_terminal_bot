@@ -1,7 +1,7 @@
 import * as crypto from 'crypto';
 import { promises as fs } from 'node:fs';
 import * as vscode from 'vscode';
-import { ChatMessage, chatCompletion } from './llmClient';
+import { ChatApiMode, ChatMessage, chatCompletion } from './llmClient';
 import {
   KNOWLEDGE_FILE_NAME,
   loadKnowledge,
@@ -23,6 +23,9 @@ export interface ChatSettings {
   endpoint: string;
   apiKey: string;
   model: string;
+  apiMode: ChatApiMode;
+  webSearch: boolean;
+  webSearchAutoAdvise: boolean;
   contextCommands: number;
   autoAdvise: AutoAdviseMode;
   autoAdviseSeconds: number;
@@ -146,6 +149,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         apiKey: settings.apiKey,
         model: settings.model,
         messages,
+        apiMode: settings.apiMode,
+        webSearch: settings.webSearch && settings.webSearchAutoAdvise,
+        onWebSearchUsage: usage => this.debugLog('AUTO_WEB_SEARCH_USAGE', { entryId: entry.id, ...usage }),
       });
       const silent = isSilent(answer);
       this.debugLog('AUTO_ANSWER', { entryId: entry.id, silent, answer });
@@ -239,6 +245,17 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       stack?: string;
     };
 
+    if (type === 'openExternal' && text) {
+      try {
+        const uri = vscode.Uri.parse(text);
+        if ((uri.scheme === 'https' || uri.scheme === 'http') && uri.authority) {
+          await vscode.env.openExternal(uri);
+        }
+      } catch (err) {
+        this.debugLog('OPEN_EXTERNAL_ERROR', { fehler: String(err) });
+      }
+      return;
+    }
     if (type === 'webviewError') {
       this.debugLog('WEBVIEW_ERROR', { text: text ?? '(ohne Text)', stack: stack ?? null });
       return;
@@ -249,7 +266,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     if (type === 'settings') {
-      this.post({ type: 'config', settings: this.settings() });
+      // Den API-Schlüssel niemals an die Webview weiterreichen.
+      const { model, apiMode, webSearch } = this.settings();
+      this.post({ type: 'config', settings: { model, apiMode, webSearch } });
       return;
     }
     if (type === 'insert') {
@@ -285,6 +304,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         apiKey: settings.apiKey,
         model: settings.model,
         messages,
+        apiMode: settings.apiMode,
+        webSearch: settings.webSearch,
+        onWebSearchUsage: usage => {
+          this.debugLog('WEB_SEARCH_USAGE', { frage: question, ...usage });
+          if (usage.used) {
+            this.post({ type: 'searchUsage', count: usage.requests });
+          }
+        },
       });
       this.debugLog('ANSWER', { frage: question, answer });
       this.history = [
@@ -346,6 +373,7 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
   }
   .plain { white-space: pre-wrap; word-break: break-word; }
   .plain code { background: var(--vscode-textCodeBlock-background); padding: 0 3px; }
+  .plain a { color: var(--vscode-textLink-foreground); }
   .typing { color: var(--vscode-descriptionForeground); font-style: italic; }
   .dots span { animation: blink 1.2s infinite; }
   .dots span:nth-child(2) { animation-delay: 0.2s; }
@@ -511,7 +539,22 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
         } else {
           const el = document.createElement('div');
           el.className = 'plain';
-          el.innerHTML = fmt(line);
+          const source = line.match(/^(.*?)(https?:\\/\\/\\S+)$/);
+          if (source) {
+            const heading = document.createElement('span');
+            heading.innerHTML = fmt(source[1]);
+            const link = document.createElement('a');
+            link.href = source[2];
+            link.textContent = source[2];
+            link.addEventListener('click', (event) => {
+              event.preventDefault();
+              vscode.postMessage({ type: 'openExternal', text: source[2] });
+            });
+            el.appendChild(heading);
+            el.appendChild(link);
+          } else {
+            el.innerHTML = fmt(line);
+          }
           wrap.appendChild(el);
         }
       }
@@ -539,6 +582,11 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
       hideTyping();
       if (msg.auto) { addPlain('meta', msg.label || 'automatischer Hinweis'); }
       addRich(msg.text);
+    } else if (msg.type === 'searchUsage') {
+      const number = msg.count;
+      addPlain('meta', (typeof number === 'number')
+        ? 'Websuche verwendet: ' + number + ' Suchanfrage(n)'
+        : 'Websuche verwendet (Anzahl nicht übermittelt)');
     } else if (msg.type === 'error') {
       hideTyping();
       addPlain('err', 'Fehler: ' + msg.text);

@@ -1,9 +1,11 @@
 # link_terminal_bot
 
+**Version 0.1.4:** Azure Responses API mit optionaler Websuche für GPT-6.1 Terra, Quellenanzeige und Suchzählung.
+
 ## Schnellstart: bauen und testweise in VS Code installieren
 
 Voraussetzungen: Node.js 20+ und VS Code **1.93 oder neuer**.
-Nicht mit „Install from VSIX" installieren — die Extension ist `private` und unversioniert,
+Nicht mit „Install from VSIX" installieren — die Extension wird hier als Quellprojekt geliefert,
 also läuft der Test über die **Extension Development Host** (auch auf deinem normalen VS Code,
 deine installierten Extensions und Einstellungen bleiben unberührt).
 
@@ -62,7 +64,7 @@ kopieren, wenn du den Chat fragst.
 - `src/sessionContext.ts` — Ringpuffer der letzten Befehle (der Kontext für das Modell).
 - `src/prompt.ts` — Systemprompt (kurz: ein Satz + ein Befehl) und der Kontextblock
   („Terminal-Verlauf"), der an die Frage gehängt wird.
-- `src/llmClient.ts` — minimaler Client für OpenAI-kompatible Chat-Endpunkte (ohne
+- `src/llmClient.ts` — Client für Chat Completions und Responses (ohne
   `vscode`-Import, damit einzeln testbar).
 - `src/chatView.ts` — die Chat-Ansicht in der Seitenleiste. Befehle in der Antwort
   (`az ...`) werden als Zeile mit **Einfügen**-Knopf gerendert.
@@ -86,6 +88,48 @@ In den **User Settings** (`settings.json`):
   auch Azure-OpenAI-Endpunkte funktionieren.
 - Der Key steht im Klartext in der `settings.json` — für den Dauerbetrieb wäre
   SecretStorage der bessere Ort.
+
+## Azure GPT-6.1 Terra mit integrierter Websuche (Responses API)
+
+In VS Code unter **User Settings (JSON)** diese Werte setzen (Endpoint und Deployment anpassen):
+
+```json
+{
+  "linkTerminalBot.chatEndpoint": "https://DEINE-RESSOURCE.openai.azure.com/openai/v1",
+  "linkTerminalBot.chatApiKey": "DEIN_AZURE_API_KEY",
+  "linkTerminalBot.chatModel": "gpt-6.1-terra",
+  "linkTerminalBot.chatApiMode": "responses",
+  "linkTerminalBot.webSearch": true,
+  "linkTerminalBot.webSearchAutoAdvise": false
+}
+```
+
+`chatModel` ist **der Azure-Deployment-Name** und muss nicht mit der Modell-ID
+übereinstimmen. Der v1-Endpunkt wird automatisch zu `/openai/v1/responses` ergänzt.
+Nicht die alte Deployment-URL mit `?api-version=...` verwenden.
+
+Die normale Chat-Completions-Anbindung funktioniert unverändert weiter
+(`chatApiMode: chat_completions`, `webSearch: false`). Im Responses-Modus
+bekommt Terra die Option `tools: [{"type":"web_search"}]`. Das Modell
+entscheidet selbst, ob eine Internetsuche sinnvoll ist. Bei tatsächlich
+verwendeter Suche liefert der Dienst Quellen-Annotationen, die im Chat
+zusätzlich als URL-Liste angezeigt werden. Die Zahl tatsächlich verbrauchter
+Suchanfragen wird, sofern der Dienst sie meldet, im Chat angezeigt und im
+Debug-Log festgehalten (`tool_usage.web_search.num_requests`).
+
+**Sicherheit und Kosten:** Websuchen können zusätzliche Gebühren verursachen.
+Suche im automatischen Terminalmodus deshalb standardmäßig **aus**.
+Der Chat schickt den zuletzt mitgelesenen Terminalkontext an Azure; bei
+aktivierter Websuche können relevante Informationen an den Suchdienst
+weitergegeben werden. Keine Zugangsdaten, Secrets oder vertraulichen
+Terminalausgaben an den Dienst schicken. API-Schlüssel werden wie bisher
+im Klartext in VS-Code-Einstellungen gespeichert; für Produktivbetrieb
+VS-Code-SecretStorage verwenden.
+
+Eine echte Suche erkennt man am `web_search_call` der Rohantwort. Sie erfolgt
+nicht bei jeder Anfrage. Der Test `npm test` prüft beide API-Modi mit simulierten Antworten.
+Eine echte Websuche kann ohne eigene Azure-Zugangsdaten nicht getestet werden.
+Microsoft-Dokumentation: https://learn.microsoft.com/en-us/azure/foundry/openai/how-to/web-search
 
 ## Starten
 
