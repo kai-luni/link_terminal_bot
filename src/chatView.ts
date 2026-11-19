@@ -11,8 +11,10 @@ import {
   AUTO_SYSTEM_PROMPT,
   SYSTEM_PROMPT,
   isSilent,
+  firstAzCommand,
   renderAutoContext,
   renderContext,
+  sameCommand,
   summarizeContext,
 } from './prompt';
 import { SessionContext } from './sessionContext';
@@ -182,6 +184,23 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       if (silent) {
         this.log(`[${entry.id}] $ ${entry.command} -> exit ${entry.exitCode ?? '?'}: kein Hinweis`);
       } else {
+        const wiederholung = this.repeatedFailure(answer);
+        if (wiederholung) {
+          // Derselbe Befehl ist oben schon gescheitert — sonst entsteht eine Endlosschleife.
+          const text =
+            `Der Befehl ist identisch zum vorigen Versuch (exit ${wiederholung.exitCode ?? '?'}) und würde wieder scheitern. ` +
+            'Ich schlage ihn nicht erneut vor — nötig ist ein anderer Weg (bei `--query` ohne führenden Punkt, z. B. `[].{Name:name}`).';
+          this.history.push({ role: 'assistant', content: text });
+          this.post({
+            type: 'answer',
+            text,
+            auto: true,
+            label: `automatisch · $ ${entry.command} (exit ${entry.exitCode ?? '?'})`,
+          });
+          this.log(`[${entry.id}] Wiederholung unterdrückt: $ ${wiederholung.command}`);
+          this.debugLog('AUTO_REPEAT', { entryId: entry.id, command: wiederholung.command, answer });
+          return;
+        }
         this.history.push({ role: 'assistant', content: answer });
         this.post({
           type: 'answer',
@@ -401,10 +420,24 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
   }
+
+  /**
+   * Sucht einen Befehl der Antwort, der in dieser Sitzung schon mit Fehler gescheitert ist.
+   * Verhindert, dass derselbe kaputte Befehl endlos wiederholt wird.
+   */
+  private repeatedFailure(answer: string): TerminalCommandEntry | undefined {
+    const command = firstAzCommand(answer);
+    if (!command) {
+      return undefined;
+    }
+    return this.context.all.find(
+      (candidate) => (candidate.exitCode ?? 0) !== 0 && sameCommand(candidate.command, command),
+    );
+  }
 }
 
 /**
- * Holt die letzte Nutzerfrage aus dem Chat-Verlauf ohne angehängten Terminal-Kontext
+ * Gibt die letzte Nutzerfrage aus dem Chat-Verlauf ohne angehängten Terminal-Kontext
  * und begrenzt sie hart auf 600 Zeichen.
  */
 function extractOpenUserTask(history: readonly ChatMessage[]): string | undefined {

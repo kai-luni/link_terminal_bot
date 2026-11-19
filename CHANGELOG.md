@@ -1,5 +1,10 @@
 # Änderungsverzeichnis
 
+## 0.1.10 — 19. November 2026
+
+- Keine Endlosschleife mehr: schlägt der automatische Hinweis denselben Befehl vor, der in dieser Sitzung schon mit Fehler gescheitert ist, wird der Vorschlag ersetzt — statt des Codeblocks erscheint ein Satz mit dem Grund (exit-Code) und dem Hinweis auf den anderen Weg.
+- Prompt-Regeln in beiden Prompts: keinen bereits gescheiterten Befehl wiederholen (auch nicht mit anderem Einleitungssatz); bei "invalid jmespath_type value" `--query` ohne führenden Punkt schreiben (`[].{Name:name}`).
+
 ## 0.1.9 — 19. November 2026
 
 - Automatischer Hinweis kennt die offene Nutzerfrage: sie wird aus dem Chat-Verlauf mitgeschickt (ohne Terminal-Kontext, max. 600 Zeichen). Damit läuft die Antwort auf die Aufgabe zu statt blind Zwischenschritte vorzuschlagen.

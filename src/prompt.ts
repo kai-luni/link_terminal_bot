@@ -15,6 +15,8 @@ export const SYSTEM_PROMPT = [
   'Sind mehrere Schritte nötig, nenne den einen Befehl, der die Aufgabe am direktesten löst, statt Zwischenschritte zu staffeln.',
   'Reichen die vorhandenen Daten, um die Aufgabe zu beantworten, liefere direkt den Zielbefehl statt eines Vorbereitungsschritts.',
   'Erfinde keine Ressourcennamen, IDs oder Subscription-Werte.',
+  'Wiederhole keinen Befehl, der im Verlauf schon mit demselben Fehler gescheitert ist — auch nicht mit anderem Einleitungssatz; ändere den Befehl wirklich oder nenne einen anderen Weg.',
+  'Meldet az "invalid jmespath_type value", schreibe `--query` ohne führenden Punkt (`[].{Name:name}` oder `[].name`).',
 ].join('\n');
 
 /** Das Modell antwortet genau damit, wenn es nichts zu sagen gibt. */
@@ -43,12 +45,31 @@ export const AUTO_SYSTEM_PROMPT = [
   'Fachhinweis Tokenverbrauch: verbrauchte Tokens je Modell/Deployment liefert `az monitor metrics list --resource <account-id> --metric ProcessedPromptTokens,GeneratedTokens --interval PT1H --aggregation Total` (alternativ Cost Management); nicht subscription- und ressourcenweise durchklicken.',
   'Reichen die vorhandenen Daten, um die Aufgabe zu beantworten, liefere direkt den Zielbefehl statt eines Vorbereitungsschritts.',
   'Vorbereitungsbefehle sind nur erlaubt, wenn der Zielbefehl ohne sie nicht ausführbar ist.',
+  'Wiederhole keinen Befehl, der im Verlauf schon mit demselben Fehler gescheitert ist — auch nicht mit anderem Einleitungssatz; ändere den Befehl wirklich oder nenne einen anderen Weg.',
+  'Meldet az "invalid jmespath_type value", schreibe `--query` ohne führenden Punkt (`[].{Name:name}` oder `[].name`).',
 ].join('\n');
 
 /** True, wenn die Antwort "nichts zu sagen" bedeutet. */
 export function isSilent(answer: string): boolean {
   const normalized = answer.trim().replace(/[.!?:*\s]+$/g, '').toUpperCase();
   return normalized.length === 0 || normalized === SILENT_TOKEN;
+}
+
+/** Erster ausführbarer az-/azd-Befehl der Antwort (Codeblock oder Fließtext). */
+export function firstAzCommand(answer: string): string | undefined {
+  for (const rawLine of answer.split('\n')) {
+    const line = rawLine.trim().replace(/^[-*>\s]+/, '').replace(/^```\w*\s*/, '').replace(/`/g, '').trim();
+    if (/^(az|azd)\s+\S/.test(line)) {
+      return line;
+    }
+  }
+  return undefined;
+}
+
+/** Vergleicht zwei Befehle unabhängig von Leerraum und Anführungszeichen. */
+export function sameCommand(a: string, b: string): boolean {
+  const norm = (value: string): string => value.replace(/["']/g, "'").replace(/\s+/g, ' ').trim().toLowerCase();
+  return norm(a) === norm(b);
 }
 
 export interface ContextSummary {
