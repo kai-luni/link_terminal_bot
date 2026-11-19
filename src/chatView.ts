@@ -625,7 +625,8 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
 
   function renderStatusBar() {
     const unit = ctxState.count === 1 ? 'Befehl' : 'Befehle';
-    ctxSummary.textContent = 'Kontext · ' + ctxState.count + ' ' + unit + ' · ' + formatTokens(ctxState.tokens) + ' Tokens';
+    ctxSummary.textContent = 'Kontext · ' + ctxState.count + ' ' + unit + ' · '
+      + formatTokens(ctxState.tokens) + ' / ' + formatTokens(cfg.contextMaxTokens) + ' Tokens';
     dModel.textContent = cfg.model || '(nicht gesetzt)';
     dEndpoint.textContent = cfg.endpoint && cfg.endpoint.trim().length > 0 ? cfg.endpoint : '(nicht gesetzt)';
     dCommands.textContent = ctxState.totalCount > ctxState.count

@@ -1,5 +1,9 @@
 # Änderungsverzeichnis
 
+## 0.1.11 — 19. November 2026
+
+- Die zugeklappte Statuszeile zeigt das Token-Budget mit: "Kontext · 2 Befehle · 1.2k / 500k Tokens" (belegt / Maximum aus `contextMaxTokens`).
+
 ## 0.1.10 — 19. November 2026
 
 - Keine Endlosschleife mehr: schlägt der automatische Hinweis denselben Befehl vor, der in dieser Sitzung schon mit Fehler gescheitert ist, wird der Vorschlag ersetzt — statt des Codeblocks erscheint ein Satz mit dem Grund (exit-Code) und dem Hinweis auf den anderen Weg.
