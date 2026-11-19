@@ -196,6 +196,10 @@ gibt — und schweigt, wenn nicht (dann steht nur eine Zeile im Output-Kanal). R
 z. B. auf Fehler oder auf Befehle, nach denen der nächste Schritt fast immer folgt
 (`az login` → Subscription setzen, `create` → Ergebnis prüfen). Automatische Hinweise sind
 im Chat mit `automatisch · $ <Befehl> (exit N)` gekennzeichnet.
+Liegt aus dem Chat eine offene Nutzerfrage vor, arbeitet der automatische Hinweis gezielt
+auf diese Aufgabe zu, ohne bereits bekannte Zwischenschritte zu wiederholen. Sobald die
+vorhandenen Ausgaben die Frage beantworten, liefert er das Ergebnis direkt in wenigen
+Sätzen ohne Codeblock statt eines weiteren Befehls.
 
 Steuerung:
 - `linkTerminalBot.autoAdvise`: `off` | `errors` | `always` (Standard `always`).

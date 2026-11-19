@@ -147,10 +147,14 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     this.inFlight = 'auto';
     this.lastAutoAt = Date.now();
     const knowledge = await this.loadKnowledge();
-    const messages = [
-      { role: 'system' as const, content: AUTO_SYSTEM_PROMPT },
+    const openTask = extractOpenUserTask(this.history);
+    const messages: ChatMessage[] = [
+      { role: 'system', content: AUTO_SYSTEM_PROMPT },
+      ...(openTask
+        ? [{ role: 'user' as const, content: `Offene Aufgabe des Nutzers:\n${openTask}` }]
+        : []),
       {
-        role: 'user' as const,
+        role: 'user',
         content: renderAutoContext(entry, this.context.all, settings.contextCommands, settings.contextMaxTokens) +
           (knowledge ? `\n\n${knowledge}` : ''),
       },
@@ -397,6 +401,28 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       }
     }
   }
+}
+
+/**
+ * Holt die letzte Nutzerfrage aus dem Chat-Verlauf ohne angehängten Terminal-Kontext
+ * und begrenzt sie hart auf 600 Zeichen.
+ */
+function extractOpenUserTask(history: readonly ChatMessage[]): string | undefined {
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role !== 'user') {
+      continue;
+    }
+    let text = history[i].content;
+    for (const marker of ['\n\n### Terminal-Verlauf', '\n\nGerade beendet:']) {
+      const idx = text.indexOf(marker);
+      if (idx !== -1) {
+        text = text.slice(0, idx);
+      }
+    }
+    text = text.trim().slice(0, 600);
+    return text.length > 0 ? text : undefined;
+  }
+  return undefined;
 }
 
 export function renderHtml(webview: vscode.Webview, settings: ChatSettings): string {

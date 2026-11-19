@@ -1,5 +1,12 @@
 # Änderungsverzeichnis
 
+## 0.1.9 — 19. November 2026
+
+- Automatischer Hinweis kennt die offene Nutzerfrage: sie wird aus dem Chat-Verlauf mitgeschickt (ohne Terminal-Kontext, max. 600 Zeichen). Damit läuft die Antwort auf die Aufgabe zu statt blind Zwischenschritte vorzuschlagen.
+- Prompt-Regeln gegen Befehlsketten: ein Schritt pro Hinweis, keine Wiederholung bereits beantworteter Schritte, Ergebnis statt weiterem Befehl, wenn die Daten reichen; Vorbereitungsbefehle nur wenn nötig.
+- Fachhinweis Tokenverbrauch: `az monitor metrics list --metric ProcessedPromptTokens,GeneratedTokens` je Konto/Deployment statt Durchklicken aller Subscriptions.
+- README ergänzt.
+
 ## 0.1.8 — 19. November 2026
 
 - Statusleiste im Chat ist zugeklappt einzeilig ("Kontext · N Befehle · X Tokens"); Modell, Endpoint, Budget und belegte Tokens erscheinen erst beim Aufklappen — der Zustand bleibt erhalten.
