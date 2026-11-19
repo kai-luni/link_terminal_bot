@@ -3,10 +3,26 @@ import { TerminalCommandEntry } from './types';
 
 interface PendingExecution {
   entry: TerminalCommandEntry;
-  chunks: string[];
-  keptChars: number;
-  maxOutputChars: number;
+  /** Erster Teil der Ausgabe — bleibt ab dem ersten Zeichen erhalten. */
+  head: string;
+  /** Letzter Teil der Ausgabe — rollt mit, ältere Zeichen fallen vorn weg. */
+  tail: string;
+  headLimit: number;
+  tailLimit: number;
+  /** Alle Zeichen, die der Stream insgesamt geliefert hat (vor der Kürzung). */
+  totalChars: number;
   readDone: Promise<void>;
+}
+
+/** Anteil der Ausgabe, der vom Anfang erhalten bleibt (Rest ist Ende). */
+const HEAD_SHARE = 0.3;
+
+/**
+ * Hinweistext, der in der Ausgabe an der Stelle der Kürzung steht. Er geht an das Modell,
+ * damit ein Fragment nicht als vollständige (oder gar leere) Ausgabe gelesen wird.
+ */
+export function truncationMarker(omittedChars: number, totalChars: number): string {
+  return `[... Ausgabe gekürzt: ${omittedChars} von ${totalChars} Zeichen in der Mitte weggelassen ...]`;
 }
 
 /**
@@ -63,12 +79,12 @@ export class TerminalWatcher implements vscode.Disposable {
     return {
       enabled: cfg.get<boolean>('enabled', true),
       watched: cfg.get<string[]>('watchedCommands', ['az', 'azd']),
-      maxOutputChars: cfg.get<number>('maxOutputChars', 4000),
+      maxOutputChars: cfg.get<number>('maxOutputChars', 8000),
     };
   }
 
   private handleStart(e: vscode.TerminalShellExecutionStartEvent): void {
-    const { enabled, watched, maxOutputChars } = this.settings();
+    const { enabled, watched, maxOutputChars: configuredMax } = this.settings();
     const command = e.execution.commandLine.value.trim();
     if (!enabled) {
       this.reportSkip('deaktiviert (linkTerminalBot.enabled = false)', command);
@@ -90,11 +106,15 @@ export class TerminalWatcher implements vscode.Disposable {
       durationMs: undefined,
     };
 
+    const maxOutputChars = Math.max(400, configuredMax);
+    const headLimit = Math.round(maxOutputChars * HEAD_SHARE);
     const pending: PendingExecution = {
       entry,
-      chunks: [],
-      keptChars: 0,
-      maxOutputChars: Math.max(200, maxOutputChars),
+      head: '',
+      tail: '',
+      headLimit,
+      tailLimit: maxOutputChars - headLimit,
+      totalChars: 0,
       readDone: Promise.resolve(),
     };
     this.pending.set(e.execution, pending);
@@ -108,10 +128,18 @@ export class TerminalWatcher implements vscode.Disposable {
   ): Promise<void> {
     try {
       for await (const chunk of execution.read()) {
-        pending.chunks.push(chunk);
-        pending.keptChars += chunk.length;
-        while (pending.keptChars > pending.maxOutputChars && pending.chunks.length > 1) {
-          pending.keptChars -= pending.chunks.shift()!.length;
+        pending.totalChars += chunk.length;
+        let rest = chunk;
+        if (pending.head.length < pending.headLimit) {
+          const take = Math.min(rest.length, pending.headLimit - pending.head.length);
+          pending.head += rest.slice(0, take);
+          rest = rest.slice(take);
+        }
+        if (rest.length > 0) {
+          pending.tail += rest;
+          if (pending.tail.length > pending.tailLimit) {
+            pending.tail = pending.tail.slice(pending.tail.length - pending.tailLimit);
+          }
         }
       }
     } catch (err) {
@@ -131,7 +159,15 @@ export class TerminalWatcher implements vscode.Disposable {
     // Der Stream läuft erst aus, wenn der Befehl wirklich fertig ist.
     await pending.readDone;
 
-    const read = pending.chunks.join('').trim();
+    const head = pending.head.trim();
+    const tail = pending.tail.trim();
+    const kept = head.length + tail.length;
+    const omitted = Math.max(0, pending.totalChars - kept);
+    let read = tail ? `${head}\n${tail}` : head;
+    if (omitted > 0) {
+      read = `${head}\n${truncationMarker(omitted, pending.totalChars)}\n${tail}`;
+      pending.entry.omittedChars = omitted;
+    }
     if (!pending.entry.output) {
       pending.entry.output = read;
     } else if (read) {

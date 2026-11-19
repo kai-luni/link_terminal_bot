@@ -2,7 +2,7 @@
   "name": "link-terminal-bot",
   "displayName": "Link Terminal Bot",
   "description": "Liest Azure-CLI-Befehle im VS-Code-Terminal mit und beantwortet Fragen dazu in einer Chat-Ansicht (Endpunkt + Key in den Einstellungen).",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "publisher": "kai-luni",
   "private": true,
   "engines": {
@@ -106,8 +106,8 @@
         },
         "linkTerminalBot.maxOutputChars": {
           "type": "number",
-          "default": 4000,
-          "description": "Wie viele Zeichen Ausgabe pro Befehl behalten werden (Ende der Ausgabe wird bevorzugt)."
+          "default": 8000,
+          "description": "Wie viele Zeichen Ausgabe pro Befehl behalten werden (Anfang und Ende bleiben, die Mitte fällt weg; der Hinweis auf die Kürzung steht in der Ausgabe)."
         },
         "linkTerminalBot.historySize": {
           "type": "number",
