@@ -302,7 +302,7 @@ export function renderHtml(webview: vscode.Webview, settings: ChatSettings): str
   .msg { margin: 0 0 10px 0; padding-left: 6px; }
   .user { border-left: 2px solid var(--vscode-focusBorder); white-space: pre-wrap; word-break: break-word; }
   .bot { border-left: 2px solid var(--vscode-descriptionForeground); }
-  .err { border-left: 2px solid var(--vscode-errorForeground); color: var(--vscode-errorForeground); }
+  .err { border-left: 2px solid var(--vscode-errorForeground); color: var(--vscode-errorForeground); white-space: pre-wrap; word-break: break-word; }
   .meta { color: var(--vscode-descriptionForeground); font-size: 0.9em; padding: 0 8px 4px 8px; }
   .cmd { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
   .cmd code {
