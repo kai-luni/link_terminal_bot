@@ -41,8 +41,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
 
   private view: vscode.WebviewView | undefined;
   private history: ChatMessage[] = [];
+  private historyEpoch = 0;
   private lastAutoAt = 0;
-  private autoInFlight = false;
+  /** Läuft gerade eine Anfrage? `ask` und `autoAdvise` teilen sich diese Sperre. */
+  private inFlight: 'ask' | 'auto' | null = null;
+  /** Kennung des laufenden Auto-Laufs — wird ungültig, sobald eine Frage startet. */
+  private autoRun: object | null = null;
   private pendingEntry: TerminalCommandEntry | undefined;
   private cooldownTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -67,6 +71,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     view.webview.html = renderHtml(view.webview, this.settings());
     view.onDidDispose(() => {
       this.view = undefined;
+      // Kein Timer darf nach dem Schließen noch eine (bezahlte) Anfrage auslösen.
+      if (this.cooldownTimer) {
+        clearTimeout(this.cooldownTimer);
+        this.cooldownTimer = undefined;
+      }
+      this.pendingEntry = undefined;
       this.debugLog('VIEW_CLOSED', 'Chat-Ansicht geschlossen.');
     });
     view.webview.onDidReceiveMessage((message: unknown) => void this.handleMessage(message));
@@ -87,8 +97,8 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.debugLog('AUTO_SKIP', { grund: 'Modus errors, Befehl war erfolgreich', entry });
       return;
     }
-    if (this.autoInFlight) {
-      // Läuft noch eine Anfrage: den Befehl nicht verlieren, sondern nachziehen.
+    if (this.inFlight !== null) {
+      // Läuft noch eine Anfrage (Frage oder anderer Hinweis): den Befehl nicht verlieren, sondern nachziehen.
       this.pendingEntry = entry;
       this.log(`[${entry.id}] Hinweis zurückgestellt — es läuft noch eine Anfrage.`);
       this.debugLog('AUTO_DEFER', { entry });
@@ -130,7 +140,9 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.pendingEntry = undefined;
     }
 
-    this.autoInFlight = true;
+    const autoRun = {};
+    this.autoRun = autoRun;
+    this.inFlight = 'auto';
     this.lastAutoAt = Date.now();
     const knowledge = await this.loadKnowledge();
     const messages = [
@@ -155,6 +167,12 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       });
       const silent = isSilent(answer);
       this.debugLog('AUTO_ANSWER', { entryId: entry.id, silent, answer });
+      if (this.autoRun !== autoRun || this.inFlight !== 'auto') {
+        // Zwischenzeitlich wurde eine Frage gestellt: die Antwort gehört zu einem alten Strang.
+        this.log(`[${entry.id}] automatischer Hinweis verworfen — es wurde zwischenzeitlich gefragt.`);
+        this.debugLog('AUTO_DROP', { entryId: entry.id, answer });
+        return;
+      }
       if (silent) {
         this.log(`[${entry.id}] $ ${entry.command} -> exit ${entry.exitCode ?? '?'}: kein Hinweis`);
       } else {
@@ -173,9 +191,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
       this.debugLog('AUTO_ERROR', { entryId: entry.id, fehler: String(err) });
       this.lastAutoAt = 0;
     } finally {
-      this.autoInFlight = false;
+      if (this.autoRun === autoRun) {
+        this.autoRun = null;
+      }
+      if (this.inFlight === 'auto') {
+        this.inFlight = null;
+      }
     }
 
+    if (this.inFlight !== null) {
+      // Eine Frage hat übernommen; sie zieht zurückgestellte Befehle selbst nach.
+      return;
+    }
     const deferred = this.pendingEntry;
     this.pendingEntry = undefined;
     if (deferred) {
@@ -262,6 +289,7 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
     if (type === 'clear') {
       this.history = [];
+      this.historyEpoch += 1;
       this.post({ type: 'cleared' });
       return;
     }
@@ -284,8 +312,18 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
     }
 
     const question = text.trim();
+    if (this.inFlight === 'ask') {
+      this.log('Frage ignoriert — die vorige Antwort läuft noch.');
+      this.post({ type: 'error', text: 'Es läuft noch eine Antwort. Bitte kurz warten.' });
+      return;
+    }
     const settings = this.settings();
+    // Die Frage übernimmt die Sperre; ein laufender Auto-Hinweis wird damit ungültig.
+    this.autoRun = null;
+    this.inFlight = 'ask';
+    const epoch = this.historyEpoch;
     const previous = this.history;
+    this.post({ type: 'busy', busy: true });
     const knowledge = await this.loadKnowledge();
     const messages: ChatMessage[] = [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -295,7 +333,6 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         content: `${question}\n\n${renderContext(this.context.all, settings.contextCommands)}${knowledge ? `\n\n${knowledge}` : ''}`,
       },
     ];
-    this.post({ type: 'busy', busy: true });
     this.debugLog('ASK', { model: settings.model, frage: question, messages });
 
     try {
@@ -314,18 +351,26 @@ export class ChatViewProvider implements vscode.WebviewViewProvider {
         },
       });
       this.debugLog('ANSWER', { frage: question, answer });
-      this.history = [
-        ...previous,
-        { role: 'user', content: question },
-        { role: 'assistant', content: answer },
-      ];
+      if (this.historyEpoch === epoch) {
+        this.history = [
+          ...this.history,
+          { role: 'user', content: question },
+          { role: 'assistant', content: answer },
+        ];
+      }
       this.post({ type: 'answer', text: answer });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       this.debugLog('ERROR', { frage: question, fehler: message });
       this.post({ type: 'error', text: message });
     } finally {
+      this.inFlight = null;
       this.post({ type: 'busy', busy: false });
+      const deferred = this.pendingEntry;
+      this.pendingEntry = undefined;
+      if (deferred) {
+        void this.autoAdvise(deferred, true);
+      }
     }
   }
 }

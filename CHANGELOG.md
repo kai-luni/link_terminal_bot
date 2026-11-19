@@ -1,5 +1,11 @@
 # Änderungsverzeichnis
 
+## 0.1.7 — 19. November 2026
+
+- Keine parallelen Gesprächsstränge mehr: Frage und automatischer Hinweis teilen sich eine Sperre. Läuft eine Frage, wird der Terminalhinweis zurückgestellt; läuft ein Hinweis und der Nutzer fragt, wird die alte Hinweisantwort verworfen statt angezeigt.
+- Der Chat-Verlauf wird beim Abschluss einer Frage an den aktuellen Stand angehängt (kein Überschreiben mehr) und bleibt nach "Verlauf löschen" konsistent.
+- Schließen der Chat-Ansicht bricht ausstehende Hinweis-Timer ab (keine Anfrage mehr ohne sichtbares Panel).
+
 ## 0.1.6 — 19. November 2026
 
 - Quellen werden nur noch einmal angezeigt: Zitat-Links und eigene "Quelle(n):"-Zeilen des Modells fliegen aus dem Antworttext, die Quellenliste am Ende bleibt (klickbar).
