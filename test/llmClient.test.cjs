@@ -51,6 +51,27 @@ const messages = [
   assert.equal(await chatCompletion({endpoint:'https://api.openai.com/v1',apiKey:'key',model:'test',messages}), 'Alter Modus funktioniert.');
   assert.throws(() => extractResponsesAnswer({output:[{type:'reasoning'}]}), /keinen Antworttext/);
   assert.equal(extractResponsesAnswer({output_text:'Fallback'}), 'Fallback');
+  // Quellen nur einmal: Zitat-URLs aus dem Text, Liste bleibt vollständig.
+  const inlineAnswer = extractResponsesAnswer({output:[{type:'message',content:[{
+    type:'output_text',
+    text:'Siehe https://learn.microsoft.com/x fuer Details.',
+    annotations:[
+      {type:'url_citation',title:'MS',url:'https://learn.microsoft.com/x'},
+      {type:'url_citation',title:'Andere',url:'https://example.com/y'}
+    ]
+  }]}]});
+  assert.ok(!inlineAnswer.includes('Siehe https://learn.microsoft.com/x'), 'URL blieb zusätzlich im Text');
+  assert.match(inlineAnswer, /Siehe fuer Details\./, 'Text wurde nicht sauber gekürzt');
+  assert.match(inlineAnswer, /Quellen:\n- MS: https:\/\/learn\.microsoft\.com\/x\n- Andere: https:\/\/example\.com\/y/);
+  assert.equal((inlineAnswer.match(/https:\/\/learn\.microsoft\.com\/x/g) || []).length, 1, 'Quelle doppelt');
+  const markdownCite = extractResponsesAnswer({output:[{type:'message',content:[{
+    type:'output_text',
+    text:'Siehe ([Microsoft](https://learn.microsoft.com/x)) fuer Details.',
+    annotations:[{type:'url_citation',title:'MS',url:'https://learn.microsoft.com/x'}]
+  }]}]});
+  assert.equal((markdownCite.match(/learn\.microsoft\.com/g) || []).length, 1, 'Markdown-Zitat doppelt');
+  assert.match(markdownCite, /^Siehe fuer Details\./);
+  console.log('Quellen-Dedupe: OK');
   await assert.rejects(() => chatCompletion({endpoint:'https://x.openai.azure.com/openai/v1',apiKey:'key',model:'test',messages,apiMode:'chat_completions',webSearch:true}), /erfordert/);
   console.log('Alle Tests bestanden: Azure Responses + Suche + Quellen, alter Chatmodus, Fehlermeldungen.');
 })().catch(err => {console.error(err); process.exit(1)});

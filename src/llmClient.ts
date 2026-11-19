@@ -112,8 +112,29 @@ export function extractResponsesAnswer(payload: unknown): string {
     throw new Error('Responses API hat keinen Antworttext geliefert (output[].content[].text fehlt).');
   }
   if (sources.size === 0) { return answer; }
+  // Quellen nur an einer Stelle zeigen: Zitat-Markup und eigene Quellenzeilen des Modells
+  // entfernen, die Liste unten bleibt.
+  let cleaned = answer;
+  for (const url of sources.keys()) {
+    const escaped = url.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    cleaned = cleaned.replace(new RegExp(`\\[[^\\]]*\\]\\(${escaped}[^)]*\\)`, 'g'), '');
+    cleaned = cleaned.replace(new RegExp(`${escaped}(?:#[^\\s)]*)?`, 'g'), '');
+  }
+  const lines = cleaned.split('\n');
+  const lastSourceLine = lines.map(line => /^\s*\**\s*Quellen?\s*\**\s*:/.test(line)).lastIndexOf(true);
+  if (lastSourceLine >= 0 && lines.length - lastSourceLine <= 6) {
+    lines.length = lastSourceLine;
+  }
+  cleaned = lines
+    .join('\n')
+    .replace(/\(\s*\)/g, '')
+    .replace(/\[\s*\]/g, '')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+$/gm, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
   const links = Array.from(sources, ([url, title]) => `- ${title}: ${url}`);
-  return `${answer}\n\nQuellen:\n${links.join('\n')}`;
+  return `${cleaned || answer}\n\nQuellen:\n${links.join('\n')}`;
 }
 
 /**

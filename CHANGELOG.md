@@ -1,5 +1,9 @@
 # Änderungsverzeichnis
 
+## 0.1.6 — 19. November 2026
+
+- Quellen werden nur noch einmal angezeigt: Zitat-Links und eigene "Quelle(n):"-Zeilen des Modells fliegen aus dem Antworttext, die Quellenliste am Ende bleibt (klickbar).
+
 ## 0.1.5 — 19. November 2026
 
 - Behoben: Jede Ausgabe mit Zeilenumbruch wurde fälschlich als gekürzt markiert (Kürzung wird jetzt an den ungetrimmten Längen gemessen).
