@@ -100,7 +100,7 @@ test('C: Modi greifen beim Start eines Hinweises und Einfügen setzt den Mindest
 
 test('C: wiederholter Fehler erscheint als Erklärung und der zurückgestellte Hinweis wird nachgezogen', async t => {
   const { session, context, requests, messages } = setup(t);
-  context.add({ ...command(1, 5), command: 'az  group show --name "gruppe-1"' }, 20);
+  context.add({ ...command(1, 5), command: 'az  group show --name "gruppe-1"' });
   const first = session.autoAdvise(context.last);
   await flush();
   await session.autoAdvise(command(2));

@@ -56,13 +56,30 @@ test('B: leerer Verlauf liefert den Hinweistext und belegt keine Tokens', () => 
   assert.equal(renderContext([], 5, 1500), '### Terminal-Verlauf\n(noch keine Befehle mitgelesen)');
 });
 
-test('B: Sitzungskontext verwirft den ältesten Eintrag und lässt sich leeren', () => {
+test('B: Sitzungskontext behält alle Einträge unabhängig von der Anzahl und lässt sich leeren', () => {
   const context = new SessionContext();
-  for (const entry of history) {
-    context.add(entry, 2);
+  const many = Array.from({ length: 25 }, (_, i) => ({
+    id: i + 1,
+    command: `az group show --name g-${i + 1}`,
+    exitCode: 0,
+    output: `Ausgabe ${i + 1}`,
+  }));
+  for (const entry of many) {
+    context.add(entry);
   }
-  assert.deepEqual(context.all, [middle, newest]);
-  assert.equal(context.last, newest);
+  assert.equal(context.all.length, 25);
+  assert.deepEqual(context.all, many);
+  assert.equal(context.last, many[24]);
+  const byCount = summarizeContext(context.all, 5, Infinity);
+  assert.equal(byCount.includedCount, 5);
+  assert.equal(byCount.totalCount, 25);
+  assert.doesNotMatch(byCount.text, /g-20\b/);
+  assert.match(byCount.text, /g-21/);
+  assert.match(byCount.text, /g-25/);
+  const byBudget = summarizeContext(context.all, 25, 40);
+  assert.ok(byBudget.includedCount < 25);
+  assert.equal(byBudget.totalCount, 25);
+  assert.ok(byBudget.tokens <= 40);
   context.clear();
   assert.deepEqual(context.all, []);
   assert.equal(context.last, undefined);

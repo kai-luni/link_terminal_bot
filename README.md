@@ -162,16 +162,16 @@ Klick öffnet den Chat. Die Farben sind über die Theme-Farben
 geändert oder gelöscht wird.
 
 Im Chat-Panel zeigt eine standardmäßig zugeklappte Statusleiste kompakt Befehlsanzahl
-und belegte Tokens (`Kontext · N Befehle · X Tokens`); aufgeklappt erscheinen Modell,
+und belegte Tokens (`Kontext · N Befehle · X / Y Tokens`); aufgeklappt erscheinen Modell,
 Endpoint, Befehle im Kontext, Token-Budget und belegte Tokens (der Aufklapp-Zustand bleibt
-beim Panel-Wechsel erhalten).
+beim Panel-Wechsel erhalten). Alle Befehle der Sitzung bleiben im Puffer; ins Modell gehen
+nur die letzten `chatContextCommands` Befehle innerhalb des Token-Budgets `contextMaxTokens`.
 
 ## Einstellungen
 
 - `linkTerminalBot.enabled` — Beobachtung an/aus (Standard: an).
 - `linkTerminalBot.watchedCommands` — erstes Wort des Befehls (Standard: `az`, `azd`).
-- `linkTerminalBot.maxOutputChars` — wie viel Ausgabe pro Befehl behalten wird (4000).
-- `linkTerminalBot.historySize` — wie viele Befehle im Kontext bleiben (20).
+- `linkTerminalBot.maxOutputChars` — wie viel Ausgabe pro Befehl behalten wird (8000).
 - `linkTerminalBot.chatContextCommands` — wie viele davon ans Modell gehen (5).
 - `linkTerminalBot.contextMaxTokens` — maximales Token-Budget für den Terminalkontext
   (Standard: 1500, Schätzung ca. 4 Zeichen/Token, aufgerundet); ältere Befehle fallen nach

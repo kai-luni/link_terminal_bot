@@ -36,7 +36,7 @@ export function activate(extensionContext: vscode.ExtensionContext): void {
       webviewOptions: { retainContextWhenHidden: true },
     }),
     watcher.onCommand((entry) => {
-      context?.add(entry, historySize());
+      context?.add(entry);
       logEntry(entry);
       debugLog('COMMAND', {
         id: entry.id,
@@ -127,7 +127,6 @@ function describeSettings(settings: ChatSettings, session?: SessionContext): Rec
     contextMaxTokens: settings.contextMaxTokens,
     watchedCommands: cfg.get<string[]>('watchedCommands', DEFAULT_WATCHED_COMMANDS),
     maxOutputChars: cfg.get<number>('maxOutputChars', DEFAULT_MAX_OUTPUT_CHARS),
-    historySize: cfg.get<number>('historySize', 20),
     aktiv: cfg.get<boolean>('enabled', true),
     befehleImKontext: session?.all.length ?? 0,
   };
@@ -267,10 +266,6 @@ function readChatSettings(): ChatSettings {
     autoAdvise: mode === 'off' || mode === 'always' ? mode : 'errors',
     autoAdviseSeconds: cfg.get<number>('autoAdviseSeconds', 8),
   };
-}
-
-function historySize(): number {
-  return vscode.workspace.getConfiguration('linkTerminalBot').get<number>('historySize', 20);
 }
 
 function indent(text: string): string {

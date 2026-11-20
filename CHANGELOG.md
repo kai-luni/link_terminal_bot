@@ -1,5 +1,11 @@
 # Änderungsverzeichnis
 
+## 0.2.1 — 19. November 2026
+
+- Einstellung `linkTerminalBot.historySize` entfernt: der Puffer behält alle Befehle der Sitzung, begrenzt wird nur noch beim Zusammenbau des Kontexts (`chatContextCommands`, `contextMaxTokens`).
+- Tests entsprechend angepasst: eigener Fall belegt, dass der Puffer 25 Befehle vollständig hält und erst die Zusammenstellung auf 5 Befehle bzw. das Token-Budget begrenzt.
+- README berichtigt: Statuszeile zeigt "belegt / Maximum", `maxOutputChars`-Standard ist 8000.
+
 ## 0.2.0 — 19. November 2026
 
 - Für Testbarkeit umgebaut: reine Logik liegt jetzt in eigenen Modulen (`terminalOutput`, `contextBudget`, `autoAdvisePolicy`, `statusText`, `chatSettings`, `chatSession`, `chatWebview`); `chatView` und `terminalWatcher` sind nur noch die VS-Code-Anbindung. Verhalten und Einstellungen unverändert.
