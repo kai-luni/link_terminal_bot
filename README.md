@@ -1,6 +1,8 @@
 # link_terminal_bot
 
-**Version 0.1.4:** Azure Responses API mit optionaler Websuche für GPT-6.1 Terra, Quellenanzeige und Suchzählung.
+**Version 0.2.1:** Azure Responses API mit optionaler Websuche für GPT-6.1 Terra, Quellenanzeige
+und Suchzählung; automatische Hinweise mit Wiederholungsschutz; für Testbarkeit in eigene
+Logik-Module getrennt (43 Tests mit `npm test`).
 
 ## Schnellstart: bauen und testweise in VS Code installieren
 
@@ -58,16 +60,27 @@ kopieren, wenn du den Chat fragst.
 
 ## Aufbau
 
+Die Logik liegt in Modulen ohne VS-Code-Abhängigkeit (mit `npm test` geprüft), die
+VS-Code-Anbindung ist davon getrennt:
+
 - `src/terminalWatcher.ts` — hängt sich an die Shell-Integration-Events, filtert die
-  konfigurierten Befehle (`az`, `azd`), sammelt Ausgabe (gekürzt auf `maxOutputChars`,
-  Ende wird bevorzugt) und meldet den fertigen Befehl.
-- `src/sessionContext.ts` — Ringpuffer der letzten Befehle (der Kontext für das Modell).
+  konfigurierten Befehle (`az`, `azd`) und meldet den fertigen Befehl.
+- `src/terminalOutput.ts` — Ausgabe kürzen (`maxOutputChars`, Anfang und Ende bleiben,
+  Mitte fällt weg, `omittedChars`), Teilausgabe bei Lesefehlern.
+- `src/sessionContext.ts` — Puffer **aller** Befehle der Sitzung.
+- `src/contextBudget.ts` — Zusammenbau des Kontexts: älteste zuerst weglassen
+  (`chatContextCommands`, `contextMaxTokens`).
 - `src/prompt.ts` — Systemprompt (kurz: ein Satz + ein Befehl) und der Kontextblock
   („Terminal-Verlauf"), der an die Frage gehängt wird.
+- `src/autoAdvisePolicy.ts` — wann ein automatischer Hinweis erlaubt ist (Modus,
+  Mindestabstand, Schweige-Antwort) und der Schutz vor wiederholten Fehlbefehlen.
+- `src/chatSession.ts` — Gesprächsverlauf, Sperre zwischen Frage und Hinweis, verworfene
+  Hinweisantworten; die Modellanfrage wird von außen übergeben (deshalb testbar).
+- `src/chatSettings.ts` / `src/statusText.ts` — Einstellungen bzw. Texte der Statuszeile.
 - `src/llmClient.ts` — Client für Chat Completions und Responses (ohne
   `vscode`-Import, damit einzeln testbar).
-- `src/chatView.ts` — die Chat-Ansicht in der Seitenleiste. Befehle in der Antwort
-  (`az ...`) werden als Zeile mit **Einfügen**-Knopf gerendert.
+- `src/chatView.ts` / `src/chatWebview.ts` — die Chat-Ansicht in der Seitenleiste und ihr
+  HTML. Befehle in der Antwort (`az ...`) werden als Zeile mit **Einfügen**-Knopf gerendert.
 - `src/extension.ts` — Verdrahtung, Output-Kanal, Befehle.
 
 ## Einrichten
@@ -142,6 +155,18 @@ Dann `F5` („Extension starten"), im neuen Fenster rechts die Seitenleiste
 **Link Terminal Bot** öffnen (oder `Strg+Shift+P` → *Link Terminal Bot: Chat öffnen*),
 im Terminal arbeiten und im Chat fragen.
 
+## Tests
+
+```bash
+npm test          # kompiliert und führt alle Tests aus (node:test, keine Zusatzpakete)
+```
+
+Abgedeckt: Kürzung langer Ausgaben samt Marker, FIFO-Kontext mit Token-Budget,
+Auto-Hinweis-Modi/-Mindestabstand, Aufgabe im Hinweis, Wiederholungsschutz, Sperre zwischen
+Frage und Hinweis, Verlauf, Statuszeile, Quellen-Dedupe, Fehlermeldungen sowie die Zusicherung,
+dass der API-Key nie an die Chat-Ansicht geht. Was einen echten VS-Code-Host braucht
+(Terminal-Events, Panel), prüfen die Tests mit simulierten Ereignissen.
+
 ## Befehle
 
 - `Link Terminal Bot: Chat öffnen`
@@ -199,7 +224,9 @@ im Chat mit `automatisch · $ <Befehl> (exit N)` gekennzeichnet.
 Liegt aus dem Chat eine offene Nutzerfrage vor, arbeitet der automatische Hinweis gezielt
 auf diese Aufgabe zu, ohne bereits bekannte Zwischenschritte zu wiederholen. Sobald die
 vorhandenen Ausgaben die Frage beantworten, liefert er das Ergebnis direkt in wenigen
-Sätzen ohne Codeblock statt eines weiteren Befehls.
+Sätzen ohne Codeblock statt eines weiteren Befehls. Schlägt er einen Befehl vor, der in
+dieser Sitzung schon mit Fehler gescheitert ist, erscheint statt des Codeblocks ein Satz mit
+dem Exit-Code — derselbe Fehlbefehl wird nicht erneut eingefügt.
 
 Steuerung:
 - `linkTerminalBot.autoAdvise`: `off` | `errors` | `always` (Standard `always`).
